@@ -1,62 +1,75 @@
 `timescale 1ns/1ns
 
 module tb_controladora;
-  // Sinais principais
-  logic clk = 0, rst = 1;
-  logic push_button = 0;
-  logic infravermelho = 0;
-  logic led, saida;
+    // Sinais principais
+    logic clk = 0, rst = 1;
+    logic push_button = 0;
+    logic infravermelho = 0;
+    logic led, saida;
 
-  // Clock de período 4ns (freq ~250 MHz)
-  always #2 clk = ~clk;
+    // Contador de ciclos (para debug)
+    logic [12:0] cont;
 
-  // Contador de 13 bits
-  logic [12:0] cont;
+    // Parâmetro de clock
+    parameter int METADE_PERIODO = 1; // 1 ns -> periodo total 2 ns
 
-  // Incrementa contador a cada clock, com reset
-  always_ff @(posedge clk or posedge rst) begin
-    if (rst)
-      cont <= 13'd0;
-    else if (push_button)begin
-      cont <= cont + 1;
-      if (cont % 10 == 0)
-        $display("  %0t     | %b   | %b     |     %b      | %s", 
-             $time, led, saida, push_button, dut.sub_1.state.name());
+    // Clock
+    always #METADE_PERIODO clk = ~clk;
+
+    // Instância do DUT
+    controladora #(.SWITCH_MODE_MIN_T(5300)) 
+    dut (
+        .clk(clk),
+        .rst(rst),
+        .push_button(push_button),
+        .infravermelho(infravermelho),
+        .led(led),
+        .saida(saida)
+    );
+
+    // Dump para waveform
+    initial begin
+        $dumpfile("tb_controladora.vcd");
+        $dumpvars(0, tb_controladora);
     end
-  end
 
-  // Instância do DUT
-  controladora dut (
-    .clk          (clk),
-    .rst          (rst),
-    .push_button  (push_button),
-    .infravermelho(infravermelho),
-    .led          (led),
-    .saida        (saida)
-  );
+    task automatic resetar; begin
+        rst = 1;
+        repeat (3) @(posedge clk);
+        rst = 0;
+        end
+    endtask
 
-  // Reset inicial
-  initial begin
-    rst = 1;
-    repeat (3) @(posedge clk);
-    rst = 0;
-  end
-  
-  // Estímulos e critério de parada
-  initial begin
-    @(negedge rst);           // espera reset sair
-    #10 push_button = 1;      // começa a contar
-    wait (cont > 5301);       // espera até contador ultrapassar 5301
-    push_button = 0;          // solta o botão
-    $display("Time(ns)=%0t | Led=%b | Saida=%b | cont=%d | push_button=%b | Estado=%s",
-             $time, led, saida, cont, push_button, dut.sub_1.state.name());
-    #10 $finish;              // encerra simulação
-  end
+    task automatic teste_alternar_modos(input int qnt_pulsos, 
+                                        input int num_teste, 
+                                        input logic led_esperado);
+        logic resultado;
 
-  // Monitor
-  initial begin
-    $display("Time(ns) | Led | Saida | push_button | Estado");
-    
-  end
+        resetar();
+        // $display("\n== Teste Segurar push_button por %0d ciclos (%0t ns) ==",
+        //         qnt_pulsos, qnt_pulsos * (2 * METADE_PERIODO));
+        push_button = 1;
+        repeat(qnt_pulsos) @(posedge clk);
+        push_button = 0;
+
+        #10;
+        resultado = (led == led_esperado);
+        $display("[%0t] Teste %0d: %s", $time, num_teste,
+                resultado ? "PASSOU!" : "FALHOU!");
+        #5;
+    endtask
+
+    initial begin
+        // Teste 1: Pressionar o botão por 5300 pulsos -> Manter modo (led = 0)
+        teste_alternar_modos(5300, 1, 0);
+
+        // Teste 2: Pressionar o botão por 5301 pulsos -> Alternar modo (led = 1)
+        teste_alternar_modos(5301, 2, 1);
+        
+        // Teste 3: Pressionar o botão por 5305 pulsos -> Alternar modo (led = 1)
+        teste_alternar_modos(5305, 3, 1);
+
+        #100 $finish;
+    end
 
 endmodule
