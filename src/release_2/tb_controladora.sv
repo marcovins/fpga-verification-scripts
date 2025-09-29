@@ -86,7 +86,7 @@ module tb_controladora;
     string separador = "------------------------------------------------------";
 
     task automatic simularTeste(input int qnt_pulsos);
-        logic lampada_esperado = (qnt_pulsos > PULSOS_LIGAR_LAMPADA) ? 1'b1 : 1'b0;
+        logic lampada_esperado = (qnt_pulsos >= PULSOS_LIGAR_LAMPADA) ? 1'b1 : 1'b0;
         static int num_teste = 1;
 
         setarManual();
