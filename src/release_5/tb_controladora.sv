@@ -28,12 +28,9 @@ module tb;
         .saida(saida)
     );
 
-    localparam CICLOS_ESTABILIZACAO_SENSOR = 4;
-    localparam MAX_DURACAO_INTERMITENTE = 30;
-    localparam MIN_DURACAO_INTERMITENTE = 1;
-    localparam MAX_INTERVALO_INTERMITENTE = 30000;
-    localparam MIN_INTERVALO_INTERMITENTE = 1;
     localparam QTD_REPETICOES_TESTE = 10;
+    localparam MAX_DURACAO_INTERMITENTE = 5299;
+    localparam MIN_DURACAO_INTERMITENTE = 300;
 
     task automatic resetar; begin
             rst = 1;
@@ -42,39 +39,38 @@ module tb;
         end
     endtask
 
-    task simular_estimulo_proximidade(input int largura_pulso_ciclos);
+    task simular_pressionar_botao(input int largura_pulso_ciclos);
         begin
-            infravermelho = 1'b1;
+            push_button = 1'b1;
             repeat(largura_pulso_ciclos) @(posedge clk);
-            infravermelho = 1'b0;
-            repeat(CICLOS_ESTABILIZACAO_SENSOR) @(posedge clk); // Aguarda estabilização do sinal
+            push_button = 1'b0;
             #10;
         end
     endtask
 
     task executar_teste_estimulos_intermitentes;
         begin
-            $display("Geração de 10 pulsos para o infravermelho");
+            $display("Geração de 10 pulsos para o push button");
 
             for (int i = 0; i < QTD_REPETICOES_TESTE; i++) begin
-                int duracao_pulso_rand, intervalo_rand;
+                int duracao_pulso_rand;
+                logic saida_anterior;
+
+                saida_anterior = saida;
 
                 duracao_pulso_rand = $urandom_range(MAX_DURACAO_INTERMITENTE, MIN_DURACAO_INTERMITENTE);
-                intervalo_rand = $urandom_range(MAX_INTERVALO_INTERMITENTE, MIN_INTERVALO_INTERMITENTE);
 
-                simular_estimulo_proximidade(duracao_pulso_rand);
+                simular_pressionar_botao(duracao_pulso_rand);
 
-                $display("-> Movimento %2d/%0d: Pulso de %0d ciclos, seguido por pausa de %0d ciclos.", i+1, QTD_REPETICOES_TESTE, duracao_pulso_rand, intervalo_rand);
+                @(posedge clk);
 
-                if (led)
+                $display("-> Pressionando %2d/%0d: Pulso de %0d ciclos.", i+1, QTD_REPETICOES_TESTE, duracao_pulso_rand);
+                $display("Saida: %b | saida anterior: %b", saida, saida_anterior);
+                if (saida != saida_anterior)
                     $display("RESULTADO IMEDIATO: Saída = %0d | Led = %b | PASSOU!\n", saida, led);
                 else
                     $display("RESULTADO IMEDIATO: Saída = %0d | Led = %b | FALHOU!\n", saida, led);
-
-                repeat(intervalo_rand) @(posedge clk);
             end
-
-            $display("\nRESULTADO FINAL: Saída = %0d | Led = %b\n", saida, led);
         end
     endtask
 
@@ -84,6 +80,7 @@ module tb;
         $display("Led: %b | Lampada: %b", led, saida);
         $display("******* Pressionando o botão por 5305 pulsos... *******");
 
+        // Alterando para o modo manual pressionando o push button
         push_button = 1;
         repeat(5305) @(posedge clk);
         push_button = 0;
