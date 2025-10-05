@@ -74,8 +74,8 @@ module tb_controladora;
         repeat(PULSOS_TROCAR_MODO + 10) @(posedge clk);
         push_button = 0; // Solta o botão
         #10;
-        assert (dut.sub_2.state == 0) else 
-            $fatal("Falha ao setar modo manual! Estado atual: %s", dut.sub_2.state.name());
+        assert (led == 1) else 
+            $fatal("Falha ao setar modo manual! Estado atual: %s", dut.sub_1.state.name());
         end
     endtask
 
@@ -85,7 +85,7 @@ module tb_controladora;
     int testes_falharam = 0;
     string separador = "------------------------------------------------------";
 
-    task automatic simularTeste(input int qnt_pulsos);
+    task automatic simularTeste_release_2(input int qnt_pulsos);
         logic lampada_esperado = (qnt_pulsos >= PULSOS_LIGAR_LAMPADA) ? 1'b1 : 1'b0;
         static int num_teste = 1;
 
