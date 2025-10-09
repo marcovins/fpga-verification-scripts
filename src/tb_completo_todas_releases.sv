@@ -29,53 +29,55 @@ module tb_completo_todas_releases;
     );
 
     // --- Parâmetros Globais ---
-    parameter int SEMENTE = 1111;
-    parameter int QNT_ALEATORIOS = 10;
-    parameter int PULSOS_TROCAR_MODO = 5300;
+    localparam int SEMENTE = 1111;
+    localparam int QNT_ALEATORIOS = 10;
+    localparam int PULSOS_TROCAR_MODO = 5300;
+    localparam int TIMEOUT = 100;
+    localparam int TEMPO_ESTAVEL = 300;
     
     // Release 1 - Parâmetros
-    parameter int INTERVALO_MIN_RELEASE_1 = 4770;
-    parameter int INTERVALO_MAX_RELEASE_1 = 5830;
+    localparam int INTERVALO_MIN_RELEASE_1 = 4770;
+    localparam int INTERVALO_MAX_RELEASE_1 = 5830;
     
     // Release 2 - Parâmetros
-    parameter int PULSOS_LIGAR_LAMPADA = 300;
-    parameter int INTERVALO_MIN_IGNORA = 1;
-    parameter int INTERVALO_MAX_IGNORA = 299;
-    parameter int INTERVALO_MIN_ACEITA = 300;
-    parameter int INTERVALO_MAX_ACEITA = 5299;
+    localparam int PULSOS_LIGAR_LAMPADA = 300;
+    localparam int INTERVALO_MIN_IGNORA = 1;
+    localparam int INTERVALO_MAX_IGNORA = 299;
+    localparam int INTERVALO_MIN_ACEITA = 300;
+    localparam int INTERVALO_MAX_ACEITA = 5299;
     
     // Release 3 - Parâmetros
-    parameter int DURACAO_PULSO_LONGO = 50;
-    parameter int TEMPO_ESPERA_EXTENSO = 30000;
-    parameter int MAX_DURACAO_INTERMITENTE = 30;
-    parameter int MIN_DURACAO_INTERMITENTE = 1;
-    parameter int MAX_INTERVALO_INTERMITENTE = 30000;
-    parameter int MIN_INTERVALO_INTERMITENTE = 1;
-    parameter int QTD_REPETICOES_TESTE_R3 = 10;
-    parameter int CICLOS_ESTABILIZACAO_SENSOR = 4;
+    localparam int DURACAO_PULSO_LONGO = 50;
+    localparam int TEMPO_ESPERA_EXTENSO = 30000;
+    localparam int MAX_DURACAO_INTERMITENTE = 30;
+    localparam int MIN_DURACAO_INTERMITENTE = 1;
+    localparam int MAX_INTERVALO_INTERMITENTE = 30000;
+    localparam int MIN_INTERVALO_INTERMITENTE = 1;
+    localparam int QTD_REPETICOES_TESTE_R3 = 10;
+    localparam int CICLOS_ESTABILIZACAO_SENSOR = 4;
     
     // Release 4 - Parâmetros
-    parameter int QTD_REPETICOES_TESTE_R4 = 10;
+    localparam int QTD_REPETICOES_TESTE_R4 = 10;
     
     // Release 5 - Parâmetros
-    parameter int QTD_REPETICOES_TESTE_R5 = 10;
-    parameter int MAX_DURACAO_INTERMITENTE_R5 = 5299;
-    parameter int MIN_DURACAO_INTERMITENTE_R5 = 300;
+    localparam int QTD_REPETICOES_TESTE_R5 = 10;
+    localparam int MAX_DURACAO_INTERMITENTE_R5 = 5299;
+    localparam int MIN_DURACAO_INTERMITENTE_R5 = 300;
     
     // Release 6 - Parâmetros
-    parameter int INTERVALO_MIN_RELEASE_6 = 300;
-    parameter int INTERVALO_MAX_RELEASE_6 = 5299;
+    localparam int INTERVALO_MIN_RELEASE_6 = 300;
+    localparam int INTERVALO_MAX_RELEASE_6 = 5299;
     
     // Release 8 - Parâmetros
-    parameter int QTD_RESETS_TESTE = 10;
-    parameter int MIN_INTERVALO_RESET = 5300;
-    parameter int MAX_INTERVALO_RESET = 10600;
-    parameter int MIN_DURACAO_RESET = 301;
-    parameter int MAX_DURACAO_RESET = 1000;
-    parameter int MIN_INTERVALO_TROCA_MODO = 2000;
-    parameter int MAX_INTERVALO_TROCA_MODO = 8000;
-    parameter int MIN_INTERVALO_ESTIMULO = 500;
-    parameter int MAX_INTERVALO_ESTIMULO = 4000;
+    localparam int QTD_RESETS_TESTE = 10;
+    localparam int MIN_INTERVALO_RESET = 5300;
+    localparam int MAX_INTERVALO_RESET = 10600;
+    localparam int MIN_DURACAO_RESET = 301;
+    localparam int MAX_DURACAO_RESET = 1000;
+    localparam int MIN_INTERVALO_TROCA_MODO = 2000;
+    localparam int MAX_INTERVALO_TROCA_MODO = 8000;
+    localparam int MIN_INTERVALO_ESTIMULO = 500;
+    localparam int MAX_INTERVALO_ESTIMULO = 4000;
 
     // --- Contadores Globais ---
     int total_testes = 0;
