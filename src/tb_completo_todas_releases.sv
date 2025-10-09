@@ -54,7 +54,6 @@ module tb_completo_todas_releases;
     localparam int MAX_INTERVALO_INTERMITENTE = 30000;
     localparam int MIN_INTERVALO_INTERMITENTE = 1;
     localparam int QTD_REPETICOES_TESTE_R3 = 10;
-    localparam int CICLOS_ESTABILIZACAO_SENSOR = 4;
     
     // Release 4 - Parâmetros
     localparam int QTD_REPETICOES_TESTE_R4 = 10;
@@ -99,6 +98,16 @@ module tb_completo_todas_releases;
         constraint range_c { num inside {[min:max]}; }
     endclass
 
+    // Função para converter string para maiúsculas
+    function string to_upper(string s);
+        int i;
+        for (i = 0; i < s.len(); i++) begin
+            if (s[i] >= "a" && s[i] <= "z")
+                s[i] = s[i] - 32;
+        end
+        return s;
+    endfunction
+
     // --- Instâncias dos Geradores ---
     GeradorAleatorio gen_release_1;
     GeradorAleatorio gen_ignora;
@@ -107,15 +116,39 @@ module tb_completo_todas_releases;
 
     // --- Eventos para Release 8 ---
     event teste_de_reset_concluido;
-    int resets_executados = 0;
 
     // --- Tasks Comuns ---
     task automatic resetar; 
         begin
-            rst = 1;
-            repeat (3) @(posedge clk);
-            rst = 0;
+            pressionar_reset(3);
             #10;
+        end
+    endtask
+
+    task automatic pressionar_push_button(input int duracao);
+        begin
+            push_button = 1'b1;
+            repeat(duracao) @(posedge clk);
+            push_button = 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    task automatic simular_deteccao_infravermelho(input int duracao);
+        begin
+            infravermelho = 1'b1;
+            repeat(duracao) @(posedge clk);
+            infravermelho = 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    task automatic pressionar_reset(input int duracao);
+        begin
+            rst = 1'b1;
+            repeat(duracao) @(posedge clk);
+            rst = 1'b0;
+            @(posedge clk);
         end
     endtask
 
@@ -132,9 +165,7 @@ module tb_completo_todas_releases;
     task automatic setarManual; 
         begin
             resetar();
-            push_button = 1;
-            repeat(PULSOS_TROCAR_MODO + 10) @(posedge clk);
-            push_button = 0;
+            pressionar_push_button(PULSOS_TROCAR_MODO + 10);
             #10;
             if (led != 1) begin
                 $display("[ERRO] Falha ao setar modo manual! Estado atual: %s", dut.sub_1.state.name());
@@ -146,38 +177,27 @@ module tb_completo_todas_releases;
     // --- Tasks específicas da Release 8 ---
     task automatic simular_pulso_botao_release_8(input int min_ciclos, max_ciclos);
         int duracao = $urandom_range(max_ciclos, min_ciclos);
-        $display("[%0t ns] Release 8 - STIMULUS: Pulso PUSH_BUTTON por %0d ciclos", $time, duracao);
-        push_button = 1'b1;
-        repeat(duracao) @(posedge clk);
-        push_button = 1'b0;
+        pressionar_push_button(duracao);
     endtask
 
     task automatic simular_pulso_ir_release_8(input int min_ciclos, max_ciclos);
         int duracao = $urandom_range(max_ciclos, min_ciclos);
-        $display("[%0t ns] Release 8 - STIMULUS: Pulso INFRAVERMELHO por %0d ciclos", $time, duracao);
-        infravermelho = 1'b1;
-        repeat(duracao) @(posedge clk);
-        infravermelho = 1'b0;
+        simular_deteccao_infravermelho(duracao);
     endtask
 
     task automatic simular_pulso_reset_release_8(input int min_ciclos, max_ciclos);
+        static int resets_executados = 1;
         int duracao = $urandom_range(max_ciclos, min_ciclos);
-        $display("[%0t ns] Release 8 - **** RESET EVENT por %0d ciclos ****", $time, duracao);
-        rst = 1'b1;
-        repeat(duracao) @(posedge clk);
-        rst = 1'b0;
-        @(posedge clk);
+        $display("                      **** RESET EVENT por %0d ciclos ****        ", duracao);
+        pressionar_reset(duracao);
         
-        total_testes++;
-        if (led == 0 && saida == 0) begin
-            testes_passaram++;
-            $display("[%0t ns] [PASSOU] Release 8 - Reset: Led=0, Saida=0", $time);
-        end else begin
-            testes_falharam++;
-            $display("[%0t ns] [FALHOU] Release 8 - Reset: Led=%b, Saida=%b", $time, led, saida);
-        end
-        
-        resets_executados++;
+        validar_teste(
+            .num_teste(resets_executados),
+            .pulsos(duracao),
+            .sinal_esperado(1'b0),
+            .release_teste(8),
+            .sinal_tipo("reset")
+        );
     endtask
 
     task automatic gerador_troca_de_modo_release_8;
@@ -224,6 +244,117 @@ module tb_completo_todas_releases;
     endtask
 
     // ============================================
+    // Task de monitorar estabilidade da saida
+    // ============================================
+    task automatic monitorar_sinal(
+        input  string      sinal,
+        output logic       sinal_amostra,
+        output bit         sinal_estavel
+    );
+        int unsigned tempo = 0;
+        logic sinal_anterior = (sinal == "led") ? led : saida;
+        sinal_estavel = 1'b1;
+
+        while (tempo < TEMPO_ESTAVEL) begin
+            @(posedge clk);
+            sinal_amostra = (sinal == "led") ? led : saida;
+            if (sinal_amostra !== sinal_anterior) begin
+                sinal_estavel = 1'b0;
+                return;
+            end
+            tempo++;
+        end
+    endtask
+
+    // ============================================
+    // Task de monitorar timeout de resposta
+    // ============================================
+    task automatic monitorar_timeout(
+        input   string    sinal,
+        input   logic     sinal_esperado,
+        output  logic     sinal_amostra,
+        output  bit       timeout
+    );
+        int unsigned tempo = 0;
+        timeout = 1'b0;
+
+        while (tempo < TIMEOUT) begin
+            @(posedge clk);
+            sinal_amostra = (sinal == "led") ? led : saida;
+            if (sinal_amostra === sinal_esperado) begin
+                return;
+            end
+            tempo++;
+        end
+
+        timeout = 1'b1;
+        @(posedge clk);
+    endtask
+
+    // ============================================
+    // Task para validar o teste e exibir o resultado
+    // ============================================
+    task automatic validar_teste(
+        inout int num_teste,
+        input int pulsos,
+        input logic sinal_esperado,
+        input int release_teste,
+        input string sinal_tipo
+    );
+        bit sinal_estavel;
+        bit timeout;
+        logic sinal_amostra;
+
+        monitorar_timeout(
+            .sinal(sinal_tipo),
+            .sinal_esperado(sinal_esperado),
+            .sinal_amostra(sinal_amostra),
+            .timeout(timeout)
+        );
+        if (!timeout) begin
+            monitorar_sinal(
+                .sinal(sinal_tipo),
+                .sinal_amostra(sinal_amostra),
+                .sinal_estavel(sinal_estavel)
+            );
+            if (sinal_estavel)begin
+                testes_passaram++;
+                if (sinal_tipo == "reset") begin
+                    $display("[PASSOU] RELEASE %0d - RESET %0d: Pulsos: %0d | LED: %b | Esperado: %b | SAIDA: %b | Esperado: %b",
+                    release_teste, num_teste, pulsos, led, sinal_esperado, saida, sinal_esperado);
+                end else begin
+                    $display("[PASSOU] RELEASE %0d - Teste %0d: Pulsos: %0d | %s: %b | Esperado: %b",
+                    release_teste, num_teste, pulsos, to_upper(sinal_tipo), sinal_amostra, sinal_esperado);
+                end
+            end else begin
+                testes_falharam++;
+                if (sinal_tipo == "reset") begin
+                    $display("[FALHOU] RELEASE %0d - RESET %0d: Pulsos: %0d | LED: %b | Esperado: %b | SAIDA: %b | Esperado: %b",
+                    release_teste, num_teste, pulsos, led, sinal_esperado, saida, sinal_esperado);
+                end else begin
+                    $display("[FALHOU] RELEASE %0d - Teste %0d: Pulsos: %0d | %s: %b | Esperado: %b | %s não permaneceu estável por %0d ciclos",
+                    release_teste, num_teste, pulsos, to_upper(sinal_tipo), sinal_amostra, TEMPO_ESTAVEL, to_upper(sinal_tipo), TEMPO_ESTAVEL);
+                end
+            end
+        end else begin
+            testes_falharam++;
+            if (sinal_tipo == "reset") begin
+                $display("[FALHOU] RELEASE %0d - RESET %0d: Pulsos: %0d | LED: %b | Esperado: %b | SAIDA: %b | Esperado: %b",
+                release_teste, num_teste, pulsos, led, sinal_esperado, saida, sinal_esperado);
+            end else begin
+                $display("[FALHOU] RELEASE %0d - Teste %0d: Pulsos: %0d | %s: %b | Esperado: %b | %s não atingiu estado esperado dentro de %0d ciclos",
+                release_teste, num_teste, pulsos, to_upper(sinal_tipo), sinal_amostra, sinal_esperado, to_upper(sinal_tipo),TIMEOUT);
+            end
+        end;
+
+        $display("%s", separador_minor);
+        total_testes++;
+        num_teste++;
+        #5;
+    endtask
+
+
+    // ============================================
     // RELEASE 1: Teste de alternância de modos
     // ============================================
     task automatic teste_alternar_modos_release_1(input int qnt_pulsos);
@@ -231,26 +362,20 @@ module tb_completo_todas_releases;
         static int num_teste = 1;
 
         resetar();
+
         push_button = 1;
         repeat(qnt_pulsos) @(posedge clk);
         push_button = 0;
-        #10;
+        @(posedge clk);
 
-        total_testes++;
-        $display("%s", separador_minor);
-        
-        if (led === led_esperado) begin
-            testes_passaram++;
-            $display("[PASSOU] Release 1 - Teste %0d: Pulsos: %0d | LED: %b | Esperado: %b",
-                num_teste, qnt_pulsos, led, led_esperado);
-        end else begin
-            testes_falharam++;
-            $display("[FALHOU] Release 1 - Teste %0d: Pulsos: %0d | LED: %b | Esperado: %b",
-                num_teste, qnt_pulsos, led, led_esperado);
-        end
+        validar_teste(
+            .num_teste(num_teste),
+            .pulsos(qnt_pulsos),
+            .sinal_esperado(led_esperado),
+            .release_teste(1),
+            .sinal_tipo("led")
+        );
 
-        num_teste++;
-        #5;
     endtask
 
     task automatic executar_testes_release_1;
@@ -280,29 +405,24 @@ module tb_completo_todas_releases;
     // ============================================
     task automatic simular_teste_release_2(input int qnt_pulsos);
         logic lampada_esperado = (qnt_pulsos >= PULSOS_LIGAR_LAMPADA) ? 1'b1 : 1'b0;
+        logic lampada_temp;
         static int num_teste = 1;
 
+        bit saida_estavel;
+        bit timeout;
+
         setarManual();
-        push_button = 1;
-        repeat(qnt_pulsos) @(posedge clk);
-        push_button = 0;
-        #10;
 
-        total_testes++;
-        $display("%s", separador_minor);
+        pressionar_push_button(qnt_pulsos);
 
-        if (saida === lampada_esperado) begin
-            testes_passaram++;
-            $display("[PASSOU] Release 2 - Teste %2d: Pulsos: %4d | SAIDA: %b | Esperado: %b | Estado: %s",
-                num_teste, qnt_pulsos, saida, lampada_esperado, dut.sub_1.state.name());
-        end else begin
-            testes_falharam++;
-            $display("[FALHOU] Release 2 - Teste %2d: Pulsos: %4d | SAIDA: %b | Esperado: %b | Estado: %s",
-                num_teste, qnt_pulsos, saida, lampada_esperado, dut.sub_1.state.name());
-        end
+        validar_teste(
+            .num_teste(num_teste),
+            .pulsos(qnt_pulsos),
+            .sinal_esperado(lampada_esperado),
+            .release_teste(2),
+            .sinal_tipo("saida")
+        );
 
-        num_teste++;
-        #5;
     endtask
 
     task automatic executar_testes_release_2;
@@ -335,39 +455,31 @@ module tb_completo_todas_releases;
     // ============================================
     // RELEASE 3: Teste de sensor infravermelho
     // ============================================
-    task simular_estimulo_proximidade_release_3(input int largura_pulso_ciclos);
-        begin
-            infravermelho = 1'b1;
-            repeat(largura_pulso_ciclos) @(posedge clk);
-            infravermelho = 1'b0;
-            repeat(CICLOS_ESTABILIZACAO_SENSOR) @(posedge clk);
-        end
-    endtask
-
     task executar_teste_pulso_longo_release_3;
+        int num_teste;
         begin
+            num_teste = 1;
             $display("Release 3 - Cenário 1: Pulso único de longa duração");
             setarAutomatico();
             
-            simular_estimulo_proximidade_release_3(DURACAO_PULSO_LONGO);
-            $display("Sensor ativado, saída acionada. Status da Saída: %0d", saida);
+            simular_deteccao_infravermelho(DURACAO_PULSO_LONGO);
 
-            $display("Sensor desativado. Aguardando %0d ciclos...", TEMPO_ESPERA_EXTENSO);
             repeat(TEMPO_ESPERA_EXTENSO) @(posedge clk);
 
-            total_testes++;
-            if (saida == 0) begin
-                testes_passaram++;
-                $display("[PASSOU] Release 3 - Teste Pulso Longo: Saída desligou após timeout");
-            end else begin
-                testes_falharam++;
-                $display("[FALHOU] Release 3 - Teste Pulso Longo: Saída não desligou após timeout");
-            end
+            validar_teste(
+                .num_teste(num_teste),
+                .pulsos(DURACAO_PULSO_LONGO),
+                .sinal_esperado(1'b0),
+                .release_teste(3),
+                .sinal_tipo("saida")
+            );
         end
     endtask
 
     task executar_teste_estimulos_intermitentes_release_3;
+        int num_teste;
         begin
+            num_teste = 2;
             $display("Release 3 - Cenário 2: Simulação de movimentos intermitentes");
             setarAutomatico();
 
@@ -377,21 +489,17 @@ module tb_completo_todas_releases;
                 duracao_pulso_rand = $urandom_range(MAX_DURACAO_INTERMITENTE, MIN_DURACAO_INTERMITENTE);
                 intervalo_rand = $urandom_range(MAX_INTERVALO_INTERMITENTE, MIN_INTERVALO_INTERMITENTE);
 
-                simular_estimulo_proximidade_release_3(duracao_pulso_rand);
-                $display("Release 3 - Movimento %2d/%d: Pulso %0d ciclos, pausa %0d ciclos. Saída: %0d", 
-                    i+1, QTD_REPETICOES_TESTE_R3, duracao_pulso_rand, intervalo_rand, saida);
-
+                simular_deteccao_infravermelho(duracao_pulso_rand);
                 repeat(intervalo_rand) @(posedge clk);
             end
 
-            total_testes++;
-            if (saida == 1) begin
-                testes_passaram++;
-                $display("[PASSOU] Release 3 - Estimulos Intermitentes: Saída permaneceu ligada");
-            end else begin
-                testes_falharam++;
-                $display("[FALHOU] Release 3 - Estimulos Intermitentes: Saída não permaneceu ligada");
-            end
+            validar_teste(
+                .num_teste(num_teste),
+                .pulsos(QTD_REPETICOES_TESTE_R3),
+                .sinal_esperado(1'b1),
+                .release_teste(3),
+                .sinal_tipo("saida")
+            );
         end
     endtask
 
@@ -409,19 +517,10 @@ module tb_completo_todas_releases;
     // ============================================
     // RELEASE 4: Teste de modo manual com IR
     // ============================================
-    task simular_estimulo_proximidade_release_4(input int largura_pulso_ciclos);
-        begin
-            infravermelho = 1'b1;
-            repeat(largura_pulso_ciclos) @(posedge clk);
-            infravermelho = 1'b0;
-            repeat(CICLOS_ESTABILIZACAO_SENSOR) @(posedge clk);
-            #10;
-        end
-    endtask
-
     task executar_teste_estimulos_intermitentes_release_4;
+        int num_teste;
         begin
-            $display("Release 4 - Geração de 10 pulsos para o infravermelho em modo manual");
+            num_teste = 1;
 
             for (int i = 0; i < QTD_REPETICOES_TESTE_R4; i++) begin
                 int duracao_pulso_rand, intervalo_rand;
@@ -429,19 +528,15 @@ module tb_completo_todas_releases;
                 duracao_pulso_rand = $urandom_range(MAX_DURACAO_INTERMITENTE, MIN_DURACAO_INTERMITENTE);
                 intervalo_rand = $urandom_range(MAX_INTERVALO_INTERMITENTE, MIN_INTERVALO_INTERMITENTE);
 
-                simular_estimulo_proximidade_release_4(duracao_pulso_rand);
+                simular_deteccao_infravermelho(duracao_pulso_rand);
 
-                total_testes++;
-                $display("Release 4 - Movimento %2d/%0d: Pulso %0d ciclos, pausa %0d ciclos", 
-                    i+1, QTD_REPETICOES_TESTE_R4, duracao_pulso_rand, intervalo_rand);
-
-                if (led == 1) begin
-                    testes_passaram++;
-                    $display("[PASSOU] SAÍDA: %0d | LED: %b", saida, led);
-                end else begin
-                    testes_falharam++;
-                    $display("[FALHOU] SAÍDA: %0d | LED: %b", saida, led);
-                end
+                validar_teste(
+                    .num_teste(num_teste),
+                    .pulsos(duracao_pulso_rand),
+                    .sinal_esperado(saida), // Em modo manual, a lâmpada deve permanecer inalterada
+                    .release_teste(4),
+                    .sinal_tipo("saida")
+                );
 
                 repeat(intervalo_rand) @(posedge clk);
             end
@@ -455,8 +550,6 @@ module tb_completo_todas_releases;
             $display("%s", separador);
 
             setarManual();
-            $display("Release 4 - Modo manual ativado. LED: %b | Lampada: %b", led, saida);
-            
             executar_teste_estimulos_intermitentes_release_4();
         end
     endtask
@@ -464,18 +557,11 @@ module tb_completo_todas_releases;
     // ============================================
     // RELEASE 5: Teste de botão em modo manual
     // ============================================
-    task simular_pressionar_botao_release_5(input int largura_pulso_ciclos);
-        begin
-            push_button = 1'b1;
-            repeat(largura_pulso_ciclos) @(posedge clk);
-            push_button = 1'b0;
-            #10;
-        end
-    endtask
-
     task executar_teste_estimulos_intermitentes_release_5;
+        int num_teste;
         begin
             $display("Release 5 - Geração de 10 pulsos para o push button em modo manual");
+            num_teste = 1;
 
             for (int i = 0; i < QTD_REPETICOES_TESTE_R5; i++) begin
                 int duracao_pulso_rand;
@@ -484,21 +570,15 @@ module tb_completo_todas_releases;
                 saida_anterior = saida;
                 duracao_pulso_rand = $urandom_range(MAX_DURACAO_INTERMITENTE_R5, MIN_DURACAO_INTERMITENTE_R5);
 
-                simular_pressionar_botao_release_5(duracao_pulso_rand);
-                @(posedge clk);
+                pressionar_push_button(duracao_pulso_rand);
 
-                total_testes++;
-                $display("Release 5 - Pressionando %2d/%0d: Pulso %0d ciclos", 
-                    i+1, QTD_REPETICOES_TESTE_R5, duracao_pulso_rand);
-                $display("Saida: %b | saida anterior: %b", saida, saida_anterior);
-                
-                if (saida != saida_anterior) begin
-                    testes_passaram++;
-                    $display("[PASSOU] SAÍDA: %0d | LED: %b", saida, led);
-                end else begin
-                    testes_falharam++;
-                    $display("[FALHOU] SAÍDA: %0d | LED: %b", saida, led);
-                end
+                validar_teste(
+                    .num_teste(num_teste),
+                    .pulsos(duracao_pulso_rand),
+                    .sinal_esperado(~saida_anterior), // A saída deve alternar
+                    .release_teste(5),
+                    .sinal_tipo("saida")
+                );
             end
         end
     endtask
@@ -510,7 +590,6 @@ module tb_completo_todas_releases;
             $display("%s", separador);
 
             setarManual();
-            $display("Release 5 - Modo manual ativado. LED: %b | Lampada: %b", led, saida);
             
             executar_teste_estimulos_intermitentes_release_5();
         end
@@ -520,30 +599,19 @@ module tb_completo_todas_releases;
     // RELEASE 6: Teste de botão em modo automático
     // ============================================
     task automatic simular_teste_release_6(input int qnt_pulsos);
-        logic saida_esperado = 0; // Em modo automático, botão não deve afetar a saída
         static int num_teste = 1;
 
         setarAutomatico();
-        push_button = 1;
-        repeat(qnt_pulsos) @(posedge clk);
-        push_button = 0;
-        #10;
+        pressionar_push_button(qnt_pulsos);
 
-        total_testes++;
-        $display("%s", separador_minor);
+        validar_teste(
+            .num_teste(num_teste),
+            .pulsos(qnt_pulsos),
+            .sinal_esperado(0),
+            .release_teste(6),
+            .sinal_tipo("saida")
+        );
 
-        if (saida === saida_esperado) begin
-            testes_passaram++;
-            $display("[PASSOU] Release 6 - Teste %2d: Pulsos: %4d | SAIDA: %b | Esperado: %b | Estado: %s",
-                num_teste, qnt_pulsos, saida, saida_esperado, dut.sub_1.state.name());
-        end else begin
-            testes_falharam++;
-            $display("[FALHOU] Release 6 - Teste %2d: Pulsos: %4d | SAIDA: %b | Esperado: %b | Estado: %s",
-                num_teste, qnt_pulsos, saida, saida_esperado, dut.sub_1.state.name());
-        end
-
-        num_teste++;
-        #5;
     endtask
 
     task automatic executar_testes_release_6;
@@ -565,50 +633,42 @@ module tb_completo_todas_releases;
     // RELEASE 7: Teste de troca de modo após IR
     // ============================================
     task automatic acenderInfravermelho;
+        int num_teste;
         begin
-            infravermelho = 1;
-            repeat(10) @(posedge clk);
-            infravermelho = 0;
-            #10;
+            num_teste = 1;
+            simular_deteccao_infravermelho(5);
             
-            if (saida == 1) begin
-                testes_passaram++;
-                $display("[PASSOU] Release 7 - Infravermelho: SAIDA: %b | Estado: %s", saida, dut.sub_1.state.name());
-            end else begin
-                testes_falharam++;
-                $display("[FALHOU] Release 7 - Infravermelho: SAIDA: %b | Estado: %s", saida, dut.sub_1.state.name());
-            end
+            validar_teste(
+                .num_teste(num_teste),
+                .pulsos(5),
+                .sinal_esperado(1'b1),
+                .release_teste(7),
+                .sinal_tipo("saida")
+            );
         end
     endtask
 
     task automatic trocarModo;
+        int num_teste;
         begin
-            push_button = 1;
-            repeat(PULSOS_TROCAR_MODO + 10) @(posedge clk);
-            push_button = 0;
-            #10;
-            
-            if (led == 1) begin
-                testes_passaram++;
-                $display("[PASSOU] Release 7 - Trocar Modo: LED: %b | Estado: %s", led, dut.sub_1.state.name());
-            end else begin
-                testes_falharam++;
-                $display("[FALHOU] Release 7 - Trocar Modo: LED: %b | Estado: %s", led, dut.sub_1.state.name());
-            end
+            num_teste = 2;
+            pressionar_push_button(PULSOS_TROCAR_MODO + 10);
+
+            validar_teste(
+                .num_teste(num_teste),
+                .pulsos(PULSOS_TROCAR_MODO + 10),
+                .sinal_esperado(1'b1),
+                .release_teste(7),
+                .sinal_tipo("led")
+            );
         end
     endtask
 
     task automatic simular_teste_release_7;
         begin
             setarAutomatico();
-            total_testes++;
-            #10;
             acenderInfravermelho();
-            total_testes++;
-            #10;
             trocarModo();
-            total_testes++;
-            #10;
         end
     endtask
 
@@ -631,13 +691,6 @@ module tb_completo_todas_releases;
             $display("EXECUTANDO TESTES DA RELEASE 8: Reset Concorrente");
             $display("%s", separador);
 
-            // Inicializar sinais
-            push_button = 1'b0;
-            infravermelho = 1'b0;
-            resets_executados = 0;
-
-            $display("[%0t ns] Release 8 - Iniciando simulação concorrente de reset...", $time);
-
             // Inicia os processos paralelos
             gerador_troca_de_modo_release_8();
             gerador_estimulos_de_modo_release_8();
@@ -645,11 +698,7 @@ module tb_completo_todas_releases;
 
             // Espera o sinal de que os resets foram concluídos
             @(teste_de_reset_concluido);
-
-            $display("[%0t ns] Release 8 - Teste de %0d resets concluído", $time, QTD_RESETS_TESTE);
-            
-            // Pequena pausa antes do próximo teste
-            #1000;
+            #5;
         end
     endtask
 
