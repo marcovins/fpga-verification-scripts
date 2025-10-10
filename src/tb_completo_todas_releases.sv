@@ -85,17 +85,39 @@ module tb_completo_todas_releases;
     string separador = "======================================================";
     string separador_minor = "------------------------------------------------------";
 
-    // --- Classe Geradora de Números Aleatórios ---
     class GeradorAleatorio;
-        randc bit [12:0] num;
         int min, max;
+        int valores[];     // Array dinâmico
+        int indice = 0;    // Índice do próximo número a ser retornado
 
-        function new(input int min, input int max);
+        // Construtor
+        function new(int min, int max);
             this.min = min;
             this.max = max;
+            valores = new[max - min + 1]; // aloca tamanho
+            for (int i = 0; i <= (max - min); i++)
+                valores[i] = min + i;
+            embaralhar();
         endfunction
 
-        constraint range_c { num inside {[min:max]}; }
+        // Função para embaralhar
+        task embaralhar();
+            int tmp, j;
+            for (int i = valores.size()-1; i > 0; i--) begin
+                j = $urandom_range(0, i);
+                tmp = valores[i];
+                valores[i] = valores[j];
+                valores[j] = tmp;
+            end
+            indice = 0;
+        endtask
+
+        // Próximo valor
+        function int proximo();
+            if (indice >= valores.size())
+                embaralhar();
+            return valores[indice++];
+        endfunction
     endclass
 
     // Função para converter string para maiúsculas
@@ -175,17 +197,17 @@ module tb_completo_todas_releases;
     endtask
 
     // --- Tasks específicas da Release 8 ---
-    task automatic simular_pulso_botao_release_8(input int min_ciclos, max_ciclos);
+    task automatic simular_pulso_botao_release_8(input int min_ciclos, input int max_ciclos);
         int duracao = $urandom_range(max_ciclos, min_ciclos);
         pressionar_push_button(duracao);
     endtask
 
-    task automatic simular_pulso_ir_release_8(input int min_ciclos, max_ciclos);
+    task automatic simular_pulso_ir_release_8(input int min_ciclos, input int max_ciclos);
         int duracao = $urandom_range(max_ciclos, min_ciclos);
         simular_deteccao_infravermelho(duracao);
     endtask
 
-    task automatic simular_pulso_reset_release_8(input int min_ciclos, max_ciclos);
+    task automatic simular_pulso_reset_release_8(input int min_ciclos, input int max_ciclos);
         static int resets_executados = 1;
         int duracao = $urandom_range(max_ciclos, min_ciclos);
         $display("                      **** RESET EVENT por %0d ciclos ****        ", duracao);
@@ -394,8 +416,8 @@ module tb_completo_todas_releases;
             $srandom(SEMENTE);
 
             repeat(QNT_ALEATORIOS) begin
-                gen_release_1.randomize();
-                teste_alternar_modos_release_1(gen_release_1.num);
+                int valor = gen_release_1.proximo();
+                teste_alternar_modos_release_1(valor);
             end
         end
     endtask
@@ -439,15 +461,15 @@ module tb_completo_todas_releases;
             // Testes aleatórios - valores que devem ser ignorados
             gen_ignora = new(INTERVALO_MIN_IGNORA, INTERVALO_MAX_IGNORA);
             repeat(5) begin
-                gen_ignora.randomize();
-                simular_teste_release_2(gen_ignora.num);
+                int valor = gen_ignora.proximo();
+                simular_teste_release_2(valor);
             end
 
             // Testes aleatórios - valores que devem ser aceitos
             gen_aceita = new(INTERVALO_MIN_ACEITA, INTERVALO_MAX_ACEITA);
             repeat(5) begin
-                gen_aceita.randomize();
-                simular_teste_release_2(gen_aceita.num);
+                int valor = gen_aceita.proximo();
+                simular_teste_release_2(valor);
             end
         end
     endtask
@@ -623,8 +645,8 @@ module tb_completo_todas_releases;
             gen_release_6 = new(INTERVALO_MIN_RELEASE_6, INTERVALO_MAX_RELEASE_6);
 
             repeat(QNT_ALEATORIOS) begin
-                gen_release_6.randomize();
-                simular_teste_release_6(gen_release_6.num);
+                int valor = gen_release_6.proximo();
+                simular_teste_release_6(valor);
             end
         end
     endtask
