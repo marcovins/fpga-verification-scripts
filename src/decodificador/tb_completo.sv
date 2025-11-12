@@ -75,12 +75,6 @@ module tb_completo;
         $display("[%0t] INFO: Reset aplicado com sucesso", $time);
     endtask
     
-    // task automatic press_key(input logic [3:0] key, input int pulses);
-    //     col_matriz = key;
-    //     repeat(pulses) @(posedge clk);
-    //     col_matriz = 4'b1111;
-    // endtask
-    
     task automatic press_key_extended(input int number, input int hold_time);
         case (number)
             0: begin
@@ -150,18 +144,6 @@ module tb_completo;
             arr[j] = tmp;
         end
     endfunction
-    
-    // function automatic logic [1:0] decode_line(input logic [3:0] row);
-    //     logic [1:0] encode_custom;
-    //     case (row)
-    //         4'b0111: encode_custom = 2'b00;
-    //         4'b1011: encode_custom = 2'b01;
-    //         4'b1101: encode_custom = 2'b10;
-    //         4'b1110: encode_custom = 2'b11;
-    //         default: encode_custom = 2'bxx;
-    //     endcase
-    //     return encode_custom;
-    // endfunction
     
     function automatic logic [3:0] decode(input logic [3:0] line, input logic [3:0] col_pressed);
         logic [3:0] value;
