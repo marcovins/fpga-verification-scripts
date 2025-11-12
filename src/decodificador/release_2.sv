@@ -33,10 +33,10 @@ module tb_teclado;
         col_matriz = 4'b1111;
     endtask
 
-    function automatic void shuffle(ref logic [3:0] arr[4]);
-        for (int i = 0; i < 4; i++) begin
-            int j = $urandom_range(0, 3);
-            logic [3:0] tmp = arr[i];
+    function automatic void shuffle16x2(ref logic [1:0] arr[16]);
+        for (int i = 15; i > 0; i--) begin
+            int j = $urandom_range(0, i);
+            logic [1:0] tmp = arr[i];
             arr[i] = arr[j];
             arr[j] = tmp;
         end

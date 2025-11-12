@@ -29,55 +29,90 @@ module tb_teclado;
         rst = 0;
     endtask
 
-    task automatic press_key(input logic [3:0] key, input int pulses);
-        col_matriz = key;
-        repeat(pulses) @(posedge clk);
-        col_matriz = 4'b1111;
-    endtask
-
-    function automatic void shuffle(ref logic [3:0] arr[4]);
-        for (int i = 0; i < 4; i++) begin
-            int j = $urandom_range(0, 3);
-            logic [3:0] tmp = arr[i];
+    function automatic void shuffle16(ref logic [1:0] arr[16][2]);
+        for (int i = 15; i > 0; i--) begin
+            int j = $urandom_range(0, i);
+            logic [1:0] tmp[2]; 
+            
+            tmp = arr[i];
             arr[i] = arr[j];
             arr[j] = tmp;
         end
     endfunction
 
-    logic [3:0] keys [4] = '{4'b1110, 4'b1101, 4'b1011, 4'b0111};
-    int num_test;
+    int num_test, pos, fail;
+    bit up;
+
+    logic [1:0] matrix [16][2];
+    logic [1:0] lin, col;
+    logic [3:0] cont_l, expected_row;
 
     initial begin
         reset();
-        shuffle(keys);
+        lin = 0;
+        col = 0;
 
-        // Percorrendo todas as teclas
-        for (int i = 0; i < 4; i++) begin
-            for (int j = 0; j < 4; j++) begin
-                wait (lin_matriz == keys[j]);
+        cont_l = 1;
+        for (int i = 0; i < 16; i++) begin
 
-                press_key(keys[i], DEBOUNCE - 5);
-                num_test = i + j + 1;
+            matrix[i][0] = lin;
+            matrix[i][1] = col;
 
-                repeat(5) @(posedge clk);
-
-                if (tecla_valid)
-                    $display("TESTE %0d.1 FALHOU!", num_test);
-                else
-                    $display("TESTE %0d.1 PASSOU!", num_test);
-
-                wait (lin_matriz == keys[j]);
-
-                press_key(keys[i], DEBOUNCE + 10);
-
-                repeat(2) @(posedge clk);
-
-                if (tecla_valid)
-                    $display("TESTE %0d.2 PASSOU!", num_test);
-                else
-                    $display("TESTE %0d.2 FALHOU!", num_test);
+            if (cont_l % 4 == 0) begin
+                lin = lin + 1;
+                col = 0;    
             end
+            else
+                col = col + 1;
+            
+            cont_l = cont_l + 1;
         end
+        
+        // Embaralhando a matriz
+        shuffle16(matrix);
+
+        for (int i = 0; i < 16; i++) begin
+            up = 0;
+            fail = 0;
+            
+            expected_row = ~(4'b0001 << matrix[i][0]);
+
+            wait (lin_matriz == expected_row);
+
+            // Antes do debounce
+            col_matriz = ~(4'b0001 << matrix[i][1]);
+            $display("LINHA: %4b | COLUNA: %4b", lin_matriz, col_matriz);
+
+            repeat(DEBOUNCE) begin
+                @(posedge clk);
+                if (tecla_valid) begin
+                    fail = 1;
+                    break;
+                end
+            end
+
+            // Depois do debounce
+            repeat(10) begin
+                @(posedge clk);
+                if (tecla_valid) begin
+                    up = 1;
+                    break;
+                end
+            end
+
+            // Soltando a tecla
+            col_matriz = 4'b1111;
+
+            if (!up) fail = 1;
+
+            if (fail)
+                $display("FALHOU");
+            else
+                $display("PASSOU");
+
+            repeat(5) @(posedge clk);
+        end
+
         $finish;
     end
 endmodule
