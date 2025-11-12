@@ -27,40 +27,22 @@ module tb_teclado;
         rst = 0;
     endtask
 
-    task automatic press_key(input logic [3:0] key, input int pulses);
-        col_matriz = key;
-        repeat(pulses) @(posedge clk);
-        col_matriz = 4'b1111;
-    endtask
-
-    function automatic void shuffle16x2(ref logic [1:0] arr[16]);
+    function automatic void shuffle16(ref logic [1:0] arr[16][2]);
         for (int i = 15; i > 0; i--) begin
             int j = $urandom_range(0, i);
-            logic [1:0] tmp = arr[i];
+            logic [1:0] tmp[2]; 
+            
+            tmp = arr[i];
             arr[i] = arr[j];
             arr[j] = tmp;
         end
     endfunction
 
-    function automatic logic [1:0] decode_line(input logic [3:0] row);
-        logic [1:0] encode_custom;
-        case (row)
-            4'b0111: encode_custom = 2'b00;
-            4'b1011: encode_custom = 2'b01;
-            4'b1101: encode_custom = 2'b10;
-            4'b1110: encode_custom = 2'b11;
-            
-            default: encode_custom = 2'bxx; 
-        endcase
-        return encode_custom;
-    endfunction
-
-    function automatic decode(logic [3:0] line, logic [3:0] col_pressed);
+    function automatic logic [3:0] decode(input logic [3:0] line, input logic [3:0] col_pressed);
         logic [3:0] value;
-        logic [1:0] dec_line = decode_line(line);
 
-        case (dec_line)
-            0: begin
+        case (line)
+            4'b1110: begin
                 case (col_pressed)
                     4'b1110: value = 4'h1;
                     4'b1101: value = 4'h2;
@@ -68,7 +50,7 @@ module tb_teclado;
                     4'b0111: value = 4'hA;
                 endcase
             end
-            1: begin
+            4'b1101: begin
                 case (col_pressed)
                     4'b1110: value = 4'h4;
                     4'b1101: value = 4'h5;
@@ -76,7 +58,7 @@ module tb_teclado;
                     4'b0111: value = 4'hB;
                 endcase
             end
-            2: begin 
+            4'b1011: begin 
                 case (col_pressed)
                     4'b1110: value = 4'h7;
                     4'b1101: value = 4'h8;
@@ -84,7 +66,7 @@ module tb_teclado;
                     4'b0111: value = 4'hC;
                 endcase
             end
-            3: begin
+            4'b0111: begin
                 case (col_pressed)
                     4'b1110: value = 4'hF;
                     4'b1101: value = 4'h0;
@@ -97,59 +79,72 @@ module tb_teclado;
         return value;
     endfunction
 
-    const logic [3:0] col_patterns [4] = '{4'b1110, 4'b1101, 4'b1011, 4'b0111};
-    const logic [3:0] row_patterns [4] = '{4'b0111, 4'b1011, 4'b1101, 4'b1110};
+    int num_test, pos, fail;
 
-    logic [3:0] expected_value;
-    logic found_event;
-    logic [3:0] expected_row, pressed_col;
-    int time_;
+    logic [1:0] matrix [16][2];
+    logic [1:0] lin, col;
+    logic [3:0] cont_l, expected_row, result;
 
     initial begin
         reset();
 
-        for (int row_idx = 0; row_idx < 4; row_idx++) begin
-            for (int col_idx = 0; col_idx < 4; col_idx++) begin
-                
-                expected_row = row_patterns[row_idx];
-                pressed_col = col_patterns[col_idx];
+        lin = 0;
+        col = 0;
 
-                wait (lin_matriz == expected_row);
+        cont_l = 1;
+        for (int i = 0; i < 16; i++) begin
 
-                expected_value = decode(expected_row, pressed_col);
+            matrix[i][0] = lin;
+            matrix[i][1] = col;
 
-                // 3. Inicia o pressionamento da tecla em BACKGROUND
-                fork
-                    press_key(pressed_col, DEBOUNCE + 1);
-                join_none
-
-                found_event = 0;
-                time_ = 0;
-
-                repeat(DEBOUNCE + 20) @(posedge clk) begin
-                    if (tecla_valid) begin
-                        time_ = time_ + 1;
-                        found_event = 1;
-
-                        if (tecla_value == expected_value && time_ <= 110) begin
-                            $display("[PASSOU] Teste (L: %0d, C: %0d)", row_idx, col_idx);
-                        end else begin
-                            $display("[FALHOU] Teste (L: %0d, C: %0d)", row_idx, col_idx);
-                        end
-                        break;
-                    end
-                end
-
-                if (!found_event) begin
-                    $display("[FALHOU] Teste (L: %0d, C: %0d)", row_idx, col_idx);
-                end
-
-                wait (col_matriz == 4'b1111);
-                
-                repeat(10) @(posedge clk);
-                
+            if (cont_l % 4 == 0) begin
+                lin = lin + 1;
+                col = 0;    
             end
+            else
+                col = col + 1;
+            
+            cont_l = cont_l + 1;
         end
+        
+        // Embaralhando a matriz
+        shuffle16(matrix);
+
+        for (int i = 0; i < 16; i++) begin
+            fail = 1;
+            
+            expected_row = ~(4'b0001 << matrix[i][0]);
+
+            wait (lin_matriz == expected_row);
+
+            // Antes do debounce
+            col_matriz = ~(4'b0001 << matrix[i][1]);
+            $display("LINHA: %4b | COLUNA: %4b", lin_matriz, col_matriz);
+
+            repeat(DEBOUNCE) @(posedge clk);
+
+            // Depois do debounce
+            repeat(10) begin
+                @(posedge clk);
+                result = decode(lin_matriz, col_matriz);
+
+                if (tecla_valid && result == tecla_value) begin
+                    fail = 0;
+                    break;
+                end
+            end
+
+            // Soltando a tecla
+            col_matriz = 4'b1111;
+
+            if (fail)
+                $display("FALHOU");
+            else
+                $display("PASSOU");
+
+            repeat(5) @(posedge clk);
+        end
+
         $finish;
     end
 endmodule
