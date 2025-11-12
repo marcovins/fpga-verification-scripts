@@ -48,15 +48,11 @@ module tb_completo;
     // ========================================
     // Variáveis globais para as tasks
     // ========================================
-    logic [3:0] keys [4];
-    int num_test;
-    logic [3:0] expected_value;
     bit finished_first;
-    logic [3:0] first_key_value;
     GeradorAleatorio gen_num, gen_cycles, gen_1, gen_2;
 
-    int pos, fail;
-    bit up;
+    int pos;
+    bit up, fail;
 
     logic [1:0] matrix [16][2];
     logic [1:0] lin, col;
