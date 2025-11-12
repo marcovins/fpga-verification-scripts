@@ -79,7 +79,7 @@ module tb_teclado;
         return value;
     endfunction
 
-    int num_test, pos, fail;
+    int pos, fail;
 
     logic [1:0] matrix [16][2];
     logic [1:0] lin, col;

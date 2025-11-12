@@ -49,16 +49,19 @@ module tb_completo;
     // Variáveis globais para as tasks
     // ========================================
     logic [3:0] keys [4];
-    logic [3:0] col_patterns [4];
-    logic [3:0] row_patterns [4];
     int num_test;
-    int time_count;
     logic [3:0] expected_value;
-    logic found_event;
-    logic [3:0] expected_row, pressed_col;
     bit finished_first;
     logic [3:0] first_key_value;
     GeradorAleatorio gen_num, gen_cycles, gen_1, gen_2;
+
+    int pos, fail;
+    bit up;
+
+    logic [1:0] matrix [16][2];
+    logic [1:0] lin, col;
+    logic [3:0] cont_l, expected_row, result;
+
     
     // ========================================
     // Tasks auxiliares
@@ -72,11 +75,11 @@ module tb_completo;
         $display("[%0t] INFO: Reset aplicado com sucesso", $time);
     endtask
     
-    task automatic press_key(input logic [3:0] key, input int pulses);
-        col_matriz = key;
-        repeat(pulses) @(posedge clk);
-        col_matriz = 4'b1111;
-    endtask
+    // task automatic press_key(input logic [3:0] key, input int pulses);
+    //     col_matriz = key;
+    //     repeat(pulses) @(posedge clk);
+    //     col_matriz = 4'b1111;
+    // endtask
     
     task automatic press_key_extended(input int number, input int hold_time);
         case (number)
@@ -137,33 +140,34 @@ module tb_completo;
         col_matriz = 4'b1111;
     endtask
     
-    function automatic void shuffle(ref logic [3:0] arr[4]);
-        for (int i = 0; i < 4; i++) begin
-            int j = $urandom_range(0, 3);
-            logic [3:0] tmp = arr[i];
+    function automatic void shuffle16(ref logic [1:0] arr[16][2]);
+        for (int i = 15; i > 0; i--) begin
+            int j = $urandom_range(0, i);
+            logic [1:0] tmp[2]; 
+            
+            tmp = arr[i];
             arr[i] = arr[j];
             arr[j] = tmp;
         end
     endfunction
     
-    function automatic logic [1:0] decode_line(input logic [3:0] row);
-        logic [1:0] encode_custom;
-        case (row)
-            4'b0111: encode_custom = 2'b00;
-            4'b1011: encode_custom = 2'b01;
-            4'b1101: encode_custom = 2'b10;
-            4'b1110: encode_custom = 2'b11;
-            default: encode_custom = 2'bxx;
-        endcase
-        return encode_custom;
-    endfunction
+    // function automatic logic [1:0] decode_line(input logic [3:0] row);
+    //     logic [1:0] encode_custom;
+    //     case (row)
+    //         4'b0111: encode_custom = 2'b00;
+    //         4'b1011: encode_custom = 2'b01;
+    //         4'b1101: encode_custom = 2'b10;
+    //         4'b1110: encode_custom = 2'b11;
+    //         default: encode_custom = 2'bxx;
+    //     endcase
+    //     return encode_custom;
+    // endfunction
     
-    function automatic logic [3:0] decode_key_value(logic [3:0] line, logic [3:0] col_pressed);
+    function automatic logic [3:0] decode(input logic [3:0] line, input logic [3:0] col_pressed);
         logic [3:0] value;
-        logic [1:0] dec_line = decode_line(line);
-        
-        case (dec_line)
-            0: begin
+
+        case (line)
+            4'b1110: begin
                 case (col_pressed)
                     4'b1110: value = 4'h1;
                     4'b1101: value = 4'h2;
@@ -171,7 +175,7 @@ module tb_completo;
                     4'b0111: value = 4'hA;
                 endcase
             end
-            1: begin
+            4'b1101: begin
                 case (col_pressed)
                     4'b1110: value = 4'h4;
                     4'b1101: value = 4'h5;
@@ -179,7 +183,7 @@ module tb_completo;
                     4'b0111: value = 4'hB;
                 endcase
             end
-            2: begin
+            4'b1011: begin 
                 case (col_pressed)
                     4'b1110: value = 4'h7;
                     4'b1101: value = 4'h8;
@@ -187,7 +191,7 @@ module tb_completo;
                     4'b0111: value = 4'hC;
                 endcase
             end
-            3: begin
+            4'b0111: begin
                 case (col_pressed)
                     4'b1110: value = 4'hF;
                     4'b1101: value = 4'h0;
@@ -196,7 +200,7 @@ module tb_completo;
                 endcase
             end
         endcase
-        
+
         return value;
     endfunction
     
@@ -208,43 +212,69 @@ module tb_completo;
         $display("INICIANDO RELEASE 1: TESTE DE DEBOUNCE");
         $display("========================================");
         
-        // Inicializar array de teclas
-        keys[0] = 4'b1110;
-        keys[1] = 4'b1101;
-        keys[2] = 4'b1011;
-        keys[3] = 4'b0111;
-        
         reset();
-        shuffle(keys);
-        
-        // Percorrendo todas as teclas
-        for (int i = 0; i < 4; i++) begin
-            for (int j = 0; j < 4; j++) begin
-                wait (lin_matriz == keys[j]);
-                
-                // Teste com tempo insuficiente (deve falhar)
-                press_key(keys[i], DEBOUNCE - 5);
-                num_test = i * 4 + j + 1;
-                
-                repeat(5) @(posedge clk);
-                
-                if (tecla_valid)
-                    $display("[%0t] FALHOU: R1.T%0d.1 - Debounce insuficiente gerou tecla_valid", $time, num_test);
-                else
-                    $display("[%0t] PASSOU: R1.T%0d.1 - Debounce insuficiente não gerou tecla_valid", $time, num_test);
-                
-                wait (lin_matriz == keys[j]);
-                
-                // Teste com tempo suficiente (deve passar)
-                press_key(keys[i], DEBOUNCE + 10);
-                
-                repeat(2) @(posedge clk);
-                
-                if (tecla_valid)
-                    $display("[%0t] PASSOU: R1.T%0d.2 - Debounce suficiente gerou tecla_valid", $time, num_test);
-                else
-                    $display("[%0t] FALHOU: R1.T%0d.2 - Debounce suficiente não gerou tecla_valid", $time, num_test);
+        lin = 0;
+        col = 0;
+
+        cont_l = 1;
+        for (int i = 0; i < 16; i++) begin
+
+            matrix[i][0] = lin;
+            matrix[i][1] = col;
+
+            if (cont_l % 4 == 0) begin
+                lin = lin + 1;
+                col = 0;    
             end
+            else
+                col = col + 1;
+            
+            cont_l = cont_l + 1;
+        end
+        
+        // Embaralhando a matriz
+        shuffle16(matrix);
+
+        for (int i = 0; i < 16; i++) begin
+            up = 0;
+            fail = 0;
+            
+            expected_row = ~(4'b0001 << matrix[i][0]);
+
+            wait (lin_matriz == expected_row);
+
+            // Antes do debounce
+            col_matriz = ~(4'b0001 << matrix[i][1]);
+            $display("LINHA: %4b | COLUNA: %4b", lin_matriz, col_matriz);
+
+            repeat(DEBOUNCE) begin
+                @(posedge clk);
+                if (tecla_valid) begin
+                    fail = 1;
+                    break;
+                end
+            end
+
+            // Depois do debounce
+            repeat(10) begin
+                @(posedge clk);
+                if (tecla_valid) begin
+                    up = 1;
+                    break;
+                end
+            end
+
+            // Soltando a tecla
+            col_matriz = 4'b1111;
+
+            if (!up) fail = 1;
+
+            if (fail)
+                $display("[%0t] FALHOU", $time);
+            else
+                $display("[%0t] PASSOU", $time);
+
+            repeat(5) @(posedge clk);
         end
         
         $display("[%0t] INFO: RELEASE 1 concluída", $time);
@@ -258,61 +288,63 @@ module tb_completo;
         $display("INICIANDO RELEASE 2: TESTE DE DECODIFICAÇÃO");
         $display("========================================");
         
-        // Inicializar arrays de padrões
-        col_patterns[0] = 4'b1110;
-        col_patterns[1] = 4'b1101;
-        col_patterns[2] = 4'b1011;
-        col_patterns[3] = 4'b0111;
-        
-        row_patterns[0] = 4'b0111;
-        row_patterns[1] = 4'b1011;
-        row_patterns[2] = 4'b1101;
-        row_patterns[3] = 4'b1110;
-        
         reset();
-        
-        for (int row_idx = 0; row_idx < 4; row_idx++) begin
-            for (int col_idx = 0; col_idx < 4; col_idx++) begin
-                
-                expected_row = row_patterns[row_idx];
-                pressed_col = col_patterns[col_idx];
-                
-                wait (lin_matriz == expected_row);
-                
-                expected_value = decode_key_value(expected_row, pressed_col);
-                
-                // Inicia o pressionamento da tecla em background
-                fork
-                    press_key(pressed_col, DEBOUNCE + 1);
-                join_none
-                
-                found_event = 0;
-                time_count = 0;
-                
-                repeat(DEBOUNCE + 20) @(posedge clk) begin
-                    if (tecla_valid) begin
-                        time_count = time_count + 1;
-                        found_event = 1;
-                        
-                        if (tecla_value == expected_value && time_count <= 110) begin
-                            $display("[%0t] PASSOU: R2.T%0d.%0d - Tecla (L:%0d,C:%0d) = 0x%X (esperado: 0x%X)", 
-                                    $time, row_idx+1, col_idx+1, row_idx, col_idx, tecla_value, expected_value);
-                        end else begin
-                            $display("[%0t] FALHOU: R2.T%0d.%0d - Tecla (L:%0d,C:%0d) = 0x%X (esperado: 0x%X)", 
-                                    $time, row_idx+1, col_idx+1, row_idx, col_idx, tecla_value, expected_value);
-                        end
-                        break;
-                    end
-                end
-                
-                if (!found_event) begin
-                    $display("[%0t] FALHOU: R2.T%0d.%0d - Tecla (L:%0d,C:%0d) não gerou evento válido", 
-                            $time, row_idx+1, col_idx+1, row_idx, col_idx);
-                end
-                
-                wait (col_matriz == 4'b1111);
-                repeat(10) @(posedge clk);
+
+        lin = 0;
+        col = 0;
+
+        cont_l = 1;
+        for (int i = 0; i < 16; i++) begin
+
+            matrix[i][0] = lin;
+            matrix[i][1] = col;
+
+            if (cont_l % 4 == 0) begin
+                lin = lin + 1;
+                col = 0;    
             end
+            else
+                col = col + 1;
+            
+            cont_l = cont_l + 1;
+        end
+        
+        // Embaralhando a matriz
+        shuffle16(matrix);
+
+        for (int i = 0; i < 16; i++) begin
+            fail = 1;
+            
+            expected_row = ~(4'b0001 << matrix[i][0]);
+
+            wait (lin_matriz == expected_row);
+
+            // Antes do debounce
+            col_matriz = ~(4'b0001 << matrix[i][1]);
+            $display("LINHA: %4b | COLUNA: %4b", lin_matriz, col_matriz);
+
+            repeat(DEBOUNCE) @(posedge clk);
+
+            // Depois do debounce
+            repeat(10) begin
+                @(posedge clk);
+                result = decode(lin_matriz, col_matriz);
+
+                if (tecla_valid && result == tecla_value) begin
+                    fail = 0;
+                    break;
+                end
+            end
+
+            // Soltando a tecla
+            col_matriz = 4'b1111;
+
+            if (fail)
+                $display("[%0t] FALHOU", $time);
+            else
+                $display("[%0t] PASSOU", $time);
+
+            repeat(5) @(posedge clk);
         end
         
         $display("[%0t] INFO: RELEASE 2 concluída", $time);

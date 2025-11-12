@@ -40,7 +40,7 @@ module tb_teclado;
         end
     endfunction
 
-    int num_test, pos, fail;
+    int pos, fail;
     bit up;
 
     logic [1:0] matrix [16][2];
