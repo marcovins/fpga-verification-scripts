@@ -1,6 +1,6 @@
 `timescale 1ns/1ns
 
-module testbench_setup;
+module testbench_operacional;
     logic clk;
     logic rst;
     logic sensor_contato;
