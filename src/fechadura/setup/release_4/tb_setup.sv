@@ -1,6 +1,5 @@
 `timescale 1ns/1ns
 
-
 module testbench_setup;
     logic clk;
     logic rst;
@@ -25,5 +24,17 @@ module testbench_setup;
         .data_setup_new(data_setup_new),
         .data_setup_ok(data_setup_ok)
     );
+
+    task automatic reset();
+        rst = 1;
+        repeat(3) @(posedge clk);
+        rst = 0;
+    endtask
+
+    initial begin
+        reset();
+
+        #100 $finish;
+    end
 
 endmodule
