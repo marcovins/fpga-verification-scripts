@@ -26,14 +26,6 @@ module testbench_setup;
         .data_setup_ok(data_setup_ok)
     );
 
-    task automatic reset();
-        rst = 1;
-        repeat(3) @(posedge clk);
-        rst = 0;
-        @(posedge clk);
-        enter_setup();
-    endtask
-
     task automatic enter_setup();
         setup_on = 1'b1;
         repeat(2) @(posedge clk);
@@ -79,7 +71,7 @@ module testbench_setup;
 
     task automatic execute_tests_release_4();
         old_configs = data_setup_new;
-        reset();
+        enter_setup();
         verifificar_valor_salvo();
 
         validar_entrada(4'b0001);
