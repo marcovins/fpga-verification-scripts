@@ -156,7 +156,7 @@ module testbench_setup;
     initial begin
         clk = 0;
         rst = 0;
-        digitos_value.digits = '0;
+        digitos_value.digits = '1;
         digitos_valid = 0;
         execute_tests_release_1();
 
