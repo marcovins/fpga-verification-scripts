@@ -9,6 +9,7 @@ module testbench_setup;
     logic display_en;
     bcdPac_t bcd_pac;
     setupPac_t data_setup_new;
+    setupPac_t old_configs;
     logic data_setup_ok;
 
     always #1 clk = ~clk;
@@ -27,12 +28,90 @@ module testbench_setup;
 
     task automatic reset();
         rst = 1;
-        repeat(3) @(posedge clk);
+        repeat(5000) @(posedge clk);
         rst = 0;
     endtask
 
-    initial begin
+    task automatic enter_setup();
+        setup_on = 1'b1;
+        repeat(2) @(posedge clk);
+        setup_on = 1'b0;
+    endtask
+
+    task send_digit(input logic [3:0] digit);
+        // Shift Register
+        digitos_value.digits = {digitos_value.digits[18:0], digit};
+        
+        // Pulso de Validação
+        digitos_valid = 1'b1;
+        @(posedge clk);
+        digitos_valid = 1'b0;
+        @(posedge clk);
+
+        // Limpa o buffer após '*' ou '#'
+        if (digit == 4'hA || digit == 4'hB) begin
+                digitos_value = '1; // Preenche tudo com 1s (equivale a 0xF repetido)
+        end
+    endtask
+
+    task automatic print_teste(input bit condicao, input int num_teste, input string msg_erro);
+        if (condicao)
+            $display("Teste %0i: PASSOU!", num_teste);
+        else
+            $display("Teste %0i: FALHOU! %s", num_teste, msg_erro);
+    endtask
+
+    task automatic execute_tests_release_3();
+        // Reset
         reset();
+
+        int num_teste = 1;
+
+        for (int i = 1; i < 9; i++) begin
+            old_configs = data_setup_new;
+
+            enter_setup();
+
+            // Inserir master
+            send_digit(4'h1);
+            send_digit(4'h2);
+            send_digit(4'h3);
+            send_digit(4'h4);
+            send_digit(4'hA);
+
+            @(posedge clk);
+
+            for (int j = 1; j < i; j++) begin
+                send_digit(4'hA);
+            end
+
+            // Pressionar '#'
+            send_digit(4'hB);
+
+            print_teste(display_en == 0, num_teste, "Permaneceu no setup");
+
+            num_teste = num_teste + 1;
+
+            print_teste(data_setup_ok == 1, num_teste, "data_setup_ok = 0");
+
+            num_teste = num_teste + 1;
+
+            print_teste(setup_on == 0, num_teste, "setup_on = 1");
+
+            num_teste = num_teste + 1;
+
+            print_teste(old_configs == data_setup_new, num_teste, "Valor alterado no setup");
+        end
+
+    endtask
+
+    initial begin
+        clk = 0;
+        rst = 0;
+        digitos_value.digits = '1;
+        digitos_valid = 0;
+
+        execute_tests_release_3();
 
         #100 $finish;
     end

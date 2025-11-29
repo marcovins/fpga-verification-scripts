@@ -84,7 +84,7 @@ module testbench_setup;
 
         // 2. Enviar tecla '*' até chegar na configuração 8
         for (int i = 1; i < 9; i++) begin
-            num_teste = num_teste + i;
+            num_teste = num_teste + 1;
 
             @(posedge clk);
             
