@@ -92,9 +92,9 @@ module testbench_setup;
             send_digit(4'hA);
         end
 
-        // Sair do Setup
-        send_digit(4'hB);
-
+        // Enviar '*'
+        send_digit(4'hA);
+        
         @(posedge clk);
 
         num_teste = num_teste + 1;
