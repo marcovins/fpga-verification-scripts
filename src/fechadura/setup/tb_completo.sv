@@ -160,7 +160,7 @@ module testbench_setup_completo;
     // ====================================================
     // Release 1 tasks and tests
     // ====================================================
-    task automatic execute_tests_release_1();
+    task automatic execute_tests_release_1(int num_teste = 1);
         $display("\n=== EXECUTANDO TESTES RELEASE 1 ===");
         reset();
 
@@ -168,8 +168,6 @@ module testbench_setup_completo;
         botao_interno = 0;
         repeat(3) @(posedge clk);
         sensor_contato = 1;
-
-        int num_teste = 1;
 
         // Passo 1 -> Pressionar botão CONFIG
         botao_config = 1;
@@ -223,7 +221,7 @@ module testbench_setup_completo;
         setup_on = 1'b0;
     endtask
 
-    task automatic execute_tests_release_2();
+    task automatic execute_tests_release_2(int num_teste = 1);
         $display("\n=== EXECUTANDO TESTES RELEASE 2 ===");
         // Reset
         reset();
@@ -233,8 +231,6 @@ module testbench_setup_completo;
 
         // 1. Entrar no setup (setup_on = 1)
         enter_setup_r2();
-
-        int num_teste = 1;
 
         print_teste(bcd_pac_setup.BCD5 == 1, num_teste, "BCD5 diferente de 1 após entrada no setup");
 
@@ -271,12 +267,10 @@ module testbench_setup_completo;
         setup_on = 1'b0;
     endtask
 
-    task automatic execute_tests_release_3();
+    task automatic execute_tests_release_3(int num_teste = 1);
         $display("\n=== EXECUTANDO TESTES RELEASE 3 ===");
         // Reset
         reset();
-
-        int num_teste = 1;
 
         // Testar saída do setup em cada uma das 8 opções
         for (int i = 1; i <= 8; i++) begin
@@ -320,29 +314,21 @@ module testbench_setup_completo;
         repeat(2) @(posedge clk);
         setup_on = 1'b0;
         repeat(2) @(posedge clk);
-        if(bcd_pac_setup.BCD5 == 1) begin
-            $display("[%0t] PASSOU! entrou no setup(opção 1) com sucesso.", $time);
-        end else begin
-            $display("[%0t] FALHOU! nao entrou no setup(opção 1).", $time);
-        end
+        print_teste(bcd_pac_setup.BCD5 == 1, 1, "Não entrou no setup (opção 1)");
     endtask
 
-    task automatic verifificar_valor_salvo();
-        if(bcd_pac_setup.BCD5 == 4'd1 && bcd_pac_setup.BCD0 == data_setup_new.bip_status) begin
-            $display("[%0t] PASSOU! Valor Salvo: %0d | tecla_valid: %0d | BCD5: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD5, bcd_pac_setup.BCD0);
-        end else begin
-            $display("[%0t] FALHOU! Valor Salvo: %0d | tecla_valid: %0d | BCD5: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD5, bcd_pac_setup.BCD0);
-        end
+    task automatic verifificar_valor_salvo(int num_teste);
+        print_teste(bcd_pac_setup.BCD5 == 4'd1 && bcd_pac_setup.BCD0 == data_setup_new.bip_status, num_teste, 
+                   $sformatf("Valor não salvo corretamente - BCD5: %0d, BCD0: %0d, bip_status: %0d", 
+                           bcd_pac_setup.BCD5, bcd_pac_setup.BCD0, data_setup_new.bip_status));
     endtask
 
-    task automatic validar_entrada(input logic [3:0] digit);
+    task automatic validar_entrada(input logic [3:0] digit, int num_teste);
         send_digit(digit);
         @(posedge clk);
-        if(bcd_pac_setup.BCD5 == 4'd1 && bcd_pac_setup.BCD0 == ((digit < 2)? digit : data_setup_new.bip_status)) begin
-            $display("[%0t] PASSOU! Numero pressionado: %0d | tecla_valid: %0d | BCD5: %0d | BCD0 : %0d", $time, digit, digitos_valid, bcd_pac_setup.BCD5, bcd_pac_setup.BCD0);
-        end else begin
-            $display("[%0t] FALHOU! Numero pressionado: %0d | tecla_valid: %0d | BCD5: %0d | BCD0 : %0d", $time, digit, digitos_valid, bcd_pac_setup.BCD5, bcd_pac_setup.BCD0);
-        end
+        print_teste(bcd_pac_setup.BCD5 == 4'd1 && bcd_pac_setup.BCD0 == ((digit < 2)? digit : data_setup_new.bip_status), num_teste,
+                   $sformatf("Entrada inválida para dígito %0d - BCD5: %0d, BCD0: %0d", 
+                           digit, bcd_pac_setup.BCD5, bcd_pac_setup.BCD0));
     endtask
 
     function automatic bit compare_configs_r4(setupPac_t a, setupPac_t b);
@@ -363,13 +349,20 @@ module testbench_setup_completo;
         old_configs = data_setup_new;
         enter_setup_r4();
         
-        verifificar_valor_salvo();
+        int num_teste = 2;
+        
+        verifificar_valor_salvo(num_teste);
+        num_teste++;
 
-        validar_entrada(4'b0001);
-        validar_entrada(4'b0000);
+        validar_entrada(4'b0001, num_teste);
+        num_teste++;
+        
+        validar_entrada(4'b0000, num_teste);
+        num_teste++;
 
         for (int i = 2; i < 10; i++) begin
-            validar_entrada(i);
+            validar_entrada(i, num_teste);
+            num_teste++;
         end
 
         send_digit(4'hA);
@@ -377,20 +370,19 @@ module testbench_setup_completo;
         fork
             begin
                 wait(data_setup_ok == 1'b1);
-                $display("[%0t] PASSOU! data_setup_ok ativado com sucesso.", $time);
+                print_teste(1'b1, num_teste, "");
+                num_teste++;
             end
             begin
                 #1000;
-                $display("[%0t] FALHOU! nao ativou data_setup_ok em tempo.", $time);
+                print_teste(1'b0, num_teste, "Timeout esperando data_setup_ok");
+                num_teste++;
             end
         join_any
         disable fork;
 
-        if(data_setup_new.bip_status === 4'b0000 && compare_configs_r4(data_setup_new, old_configs)) begin
-            $display("[%0t] PASSOU! Configuracao salva corretamente.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Configuracao nao salva corretamente.", $time);
-        end
+        print_teste(data_setup_new.bip_status === 4'b0000 && compare_configs_r4(data_setup_new, old_configs), 
+                   num_teste, "Configuração não salva corretamente");
 
         $display("=== RELEASE 4 CONCLUÍDA ===\n");
     endtask
@@ -408,20 +400,16 @@ module testbench_setup_completo;
         @(posedge clk);
     endtask
 
-    task automatic verificar_deslocamento_r5(logic [3:0] expected_BCD1, logic [3:0] expected_BCD0);
-        if(bcd_pac_setup.BCD1 == expected_BCD1 && bcd_pac_setup.BCD0 == expected_BCD0) begin
-            $display("[%0t] PASSOU! Valor Salvo: %0d | tecla_valid: %0d | BCD1: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0);
-        end else begin
-            $display("[%0t] FALHOU! Valor Salvo: %0d | tecla_valid: %0d | BCD1: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0);
-        end
+    task automatic verificar_deslocamento_r5(logic [3:0] expected_BCD1, logic [3:0] expected_BCD0, int num_teste);
+        print_teste(bcd_pac_setup.BCD1 == expected_BCD1 && bcd_pac_setup.BCD0 == expected_BCD0, num_teste,
+                   $sformatf("Deslocamento incorreto - Esperado BCD1=%0d, BCD0=%0d | Atual BCD1=%0d, BCD0=%0d", 
+                           expected_BCD1, expected_BCD0, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0));
     endtask
 
-    task automatic verificar_bcd_r5_opcao2(logic [4:0] expected_BCD5);
-        if(bcd_pac_setup.BCD5 == expected_BCD5) begin
-            $display("[%0t] PASSOU! alternância de configuração funcionando corretamente. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end else begin
-            $display("[%0t] FALHOU! alternância de configuração nao funcionando corretamente. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end
+    task automatic verificar_bcd_r5_opcao2(logic [4:0] expected_BCD5, int num_teste);
+        print_teste(bcd_pac_setup.BCD5 == expected_BCD5, num_teste,
+                   $sformatf("Alternância de configuração incorreta - Esperado BCD5=%0d | Atual BCD5=%0d", 
+                           expected_BCD5, bcd_pac_setup.BCD5));
     endtask
 
     function automatic bit compare_configs_r5(setupPac_t a, setupPac_t b);
@@ -435,46 +423,42 @@ module testbench_setup_completo;
         (a.senha_4.digits === b.senha_4.digits);
     endfunction
 
-    task automatic return_to_operational_r5(logic [4:0] expected_bip_time);
+    task automatic return_to_operational_r5(logic [4:0] expected_bip_time, int num_teste);
         send_digit(4'hB);
         fork
             begin
                 wait(data_setup_ok == 1'b1);
-                $display("[%0t] PASSOU! retornou ao operacional com sucesso.", $time);
+                print_teste(1'b1, num_teste, "");
+                num_teste++;
             end
             begin
                 #1000;
-                $display("[%0t] FALHOU! nao retornou ao operacional em tempo.", $time);
+                print_teste(1'b0, num_teste, "Timeout ao retornar ao operacional");
+                num_teste++;
             end
         join_any
         disable fork;
 
-        if(data_setup_new.bip_time === expected_bip_time && compare_configs_r5(data_setup_new, old_configs)) begin
-            $display("[%0t] PASSOU! Configuracao salva corretamente.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Configuracao nao salva corretamente.", $time);
-        end
+        print_teste(data_setup_new.bip_time === expected_bip_time && compare_configs_r5(data_setup_new, old_configs),
+                   num_teste, $sformatf("Configuração não salva - Esperado bip_time=%0d | Atual=%0d", 
+                                      expected_bip_time, data_setup_new.bip_time));
     endtask
 
-    task automatic test_current_option_r5(logic [4:0] expected);
-        if(bcd_pac_setup.BCD5 == expected) begin
-            $display("[%0t] PASSOU! alternância de configuração funcionando corretamente apos nova entrada. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end else begin
-            $display("[%0t] FALHOU! alternância de configuração nao funcionando corretamente apos nova entrada. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end
+    task automatic test_current_option_r5(logic [4:0] expected, int num_teste);
+        print_teste(bcd_pac_setup.BCD5 == expected, num_teste,
+                   $sformatf("Opção incorreta após nova entrada - Esperado BCD5=%0d | Atual=%0d", 
+                           expected, bcd_pac_setup.BCD5));
     endtask
 
-    task automatic test_limits_r5(logic [4:0] input_value, logic [4:0] expected_value);
+    task automatic test_limits_r5(logic [4:0] input_value, logic [4:0] expected_value, int num_teste);
         send_digit(input_value[3:0]);
         send_digit({1'b0, input_value[4]});
         send_digit(4'hA);
         @(posedge clk);
 
-        if(data_setup_new.bip_time === expected_value) begin
-            $display("[%0t] PASSOU! Limite testado corretamente para valor de entrada: %0d | Valor salvo: %0d", $time, input_value, data_setup_new.bip_time);
-        end else begin
-            $display("[%0t] FALHOU! Limite nao testado corretamente para valor de entrada: %0d | Valor salvo: %0d", $time, input_value, data_setup_new.bip_time);
-        end
+        print_teste(data_setup_new.bip_time === expected_value, num_teste,
+                   $sformatf("Limite não testado corretamente - Entrada=%0d | Esperado=%0d | Atual=%0d", 
+                           input_value, expected_value, data_setup_new.bip_time));
     endtask
 
     task automatic execute_tests_release_5();
@@ -482,25 +466,30 @@ module testbench_setup_completo;
         reset();
         
         old_configs = data_setup_new;
+        int num_teste = 1;
         
         // Teste 1: Entrar na opção 2 e testar digitação "1,2,3" → valor "23"
         enter_setup_r5_opcao2();
 
         // Verificar se está na opção 2
-        print_teste(bcd_pac_setup.BCD5 == 2, 1, "Não está na opção 2 (tempo de BIP)");
+        print_teste(bcd_pac_setup.BCD5 == 2, num_teste, "Não está na opção 2 (tempo de BIP)");
+        num_teste++;
 
         // Digitar "1,2,3" → deve resultar em "23" nos últimos 2 dígitos
         send_digit(4'd1);
         send_digit(4'd2);
         send_digit(4'd3);
-        verificar_deslocamento_r5(4'd2, 4'd3);  // BCD1=2, BCD0=3 → valor "23"
+        verificar_deslocamento_r5(4'd2, 4'd3, num_teste);  // BCD1=2, BCD0=3 → valor "23"
+        num_teste++;
 
         // Pressionar "*" para confirmar
         send_digit(4'hA);
-        verificar_bcd_r5_opcao2(4'd3);  // Deve ir para opção 3
+        verificar_bcd_r5_opcao2(4'd3, num_teste);  // Deve ir para opção 3
+        num_teste++;
 
         // Sair do setup
-        return_to_operational_r5(5'd23);
+        return_to_operational_r5(5'd23, num_teste);
+        num_teste += 2;
 
         // Teste 2: Testar saturação mínima (03 → 05)
         enter_setup_r5_opcao2();
@@ -508,12 +497,15 @@ module testbench_setup_completo;
         send_digit(4'd0);
         send_digit(4'd3);
         send_digit(4'hA);
-        test_limits_r5(5'd3, 5'd5);  // 03 deve ser saturado para 05
+        test_limits_r5(5'd3, 5'd5, num_teste);  // 03 deve ser saturado para 05
+        num_teste++;
 
         send_digit(4'hA);
-        verificar_bcd_r5_opcao2(4'd5);  // Deve ir para opção 5
+        verificar_bcd_r5_opcao2(4'd5, num_teste);  // Deve ir para opção 5
+        num_teste++;
 
-        return_to_operational_r5(5'd5);
+        return_to_operational_r5(5'd5, num_teste);
+        num_teste += 2;
 
         // Teste 3: Testar saturação máxima (97 → 60)
         enter_setup_r5_opcao2();
@@ -521,12 +513,14 @@ module testbench_setup_completo;
         send_digit(4'd9);
         send_digit(4'd7);
         send_digit(4'hA);
-        test_limits_r5(5'd97, 5'd60);  // 97 deve ser saturado para 60
+        test_limits_r5(5'd97, 5'd60, num_teste);  // 97 deve ser saturado para 60
+        num_teste++;
 
         send_digit(4'hA);
-        verificar_bcd_r5_opcao2(4'd5);  // Deve ir para opção 5
+        verificar_bcd_r5_opcao2(4'd5, num_teste);  // Deve ir para opção 5
+        num_teste++;
 
-        return_to_operational_r5(5'd60);
+        return_to_operational_r5(5'd60, num_teste);
 
         $display("=== RELEASE 5 CONCLUÍDA ===\n");
     endtask
@@ -546,20 +540,16 @@ module testbench_setup_completo;
         @(posedge clk);
     endtask
 
-    task automatic verificar_deslocamento_r6(logic [3:0] expected_BCD1, logic [3:0] expected_BCD0);
-        if(bcd_pac_setup.BCD1 == expected_BCD1 && bcd_pac_setup.BCD0 == expected_BCD0) begin
-            $display("[%0t] PASSOU! Valor Salvo: %0d | tecla_valid: %0d | BCD1: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0);
-        end else begin
-            $display("[%0t] FALHOU! Valor Salvo: %0d | tecla_valid: %0d | BCD1: %0d | BCD0 : %0d", $time, data_setup_new.bip_status, digitos_valid, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0);
-        end
+    task automatic verificar_deslocamento_r6(logic [3:0] expected_BCD1, logic [3:0] expected_BCD0, int num_teste);
+        print_teste(bcd_pac_setup.BCD1 == expected_BCD1 && bcd_pac_setup.BCD0 == expected_BCD0, num_teste,
+                   $sformatf("Deslocamento incorreto - Esperado BCD1=%0d, BCD0=%0d | Atual BCD1=%0d, BCD0=%0d", 
+                           expected_BCD1, expected_BCD0, bcd_pac_setup.BCD1, bcd_pac_setup.BCD0));
     endtask
 
-    task automatic verificar_bcd_r6(logic [4:0] expected_BCD5);
-        if(bcd_pac_setup.BCD5 == expected_BCD5) begin
-            $display("[%0t] PASSOU! alternância de configuração funcionando corretamente. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end else begin
-            $display("[%0t] FALHOU! alternância de configuração nao funcionando corretamente. BCD5: %0d", $time, bcd_pac_setup.BCD5);
-        end
+    task automatic verificar_bcd_r6(logic [4:0] expected_BCD5, int num_teste);
+        print_teste(bcd_pac_setup.BCD5 == expected_BCD5, num_teste,
+                   $sformatf("Alternância de configuração incorreta - Esperado BCD5=%0d | Atual BCD5=%0d", 
+                           expected_BCD5, bcd_pac_setup.BCD5));
     endtask
 
     function automatic bit compare_configs_r6(setupPac_t a, setupPac_t b);
@@ -573,38 +563,36 @@ module testbench_setup_completo;
         (a.senha_4.digits === b.senha_4.digits);
     endfunction
 
-    task automatic return_to_operational_r6(logic [4:0] expected_tranca_aut_time);
+    task automatic return_to_operational_r6(logic [4:0] expected_tranca_aut_time, int num_teste);
         send_digit(4'hB);
         fork
             begin
                 wait(data_setup_ok == 1'b1);
-                $display("[%0t] PASSOU! retornou ao operacional com sucesso.", $time);
+                print_teste(1'b1, num_teste, "");
+                num_teste++;
             end
             begin
                 #1000;
-                $display("[%0t] FALHOU! nao retornou ao operacional em tempo.", $time);
+                print_teste(1'b0, num_teste, "Timeout ao retornar ao operacional");
+                num_teste++;
             end
         join_any
         disable fork;
 
-        if(data_setup_new.tranca_aut_time === expected_tranca_aut_time && compare_configs_r6(data_setup_new, old_configs)) begin
-            $display("[%0t] PASSOU! Configuracao salva corretamente.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Configuracao nao salva corretamente.", $time);
-        end
+        print_teste(data_setup_new.tranca_aut_time === expected_tranca_aut_time && compare_configs_r6(data_setup_new, old_configs),
+                   num_teste, $sformatf("Configuração não salva - Esperado tranca_aut_time=%0d | Atual=%0d", 
+                                      expected_tranca_aut_time, data_setup_new.tranca_aut_time));
     endtask
 
-    task automatic test_limits_r6(logic [4:0] input_value, logic [4:0] expected_value);
+    task automatic test_limits_r6(logic [4:0] input_value, logic [4:0] expected_value, int num_teste);
         send_digit(input_value[3:0]);
         send_digit({1'b0, input_value[4]});
         send_digit(4'hA);
         @(posedge clk);
 
-        if(data_setup_new.tranca_aut_time === expected_value) begin
-            $display("[%0t] PASSOU! Limite testado corretamente para valor de entrada: %0d | Valor salvo: %0d", $time, input_value, data_setup_new.bip_time);
-        end else begin
-            $display("[%0t] FALHOU! Limite nao testado corretamente para valor de entrada: %0d | Valor salvo: %0d", $time, input_value, data_setup_new.bip_time);
-        end
+        print_teste(data_setup_new.tranca_aut_time === expected_value, num_teste,
+                   $sformatf("Limite não testado corretamente - Entrada=%0d | Esperado=%0d | Atual=%0d", 
+                           input_value, expected_value, data_setup_new.tranca_aut_time));
     endtask
 
     task automatic execute_tests_release_6();
@@ -612,25 +600,30 @@ module testbench_setup_completo;
         reset();
         
         old_configs = data_setup_new;
+        int num_teste = 1;
         
         // Teste 1: Entrar na opção 3 e testar digitação "1,2,3" → valor "23"
         enter_setup_r6_opcao3();
 
         // Verificar se está na opção 3
-        print_teste(bcd_pac_setup.BCD5 == 3, 1, "Não está na opção 3 (tempo de fechamento automático)");
+        print_teste(bcd_pac_setup.BCD5 == 3, num_teste, "Não está na opção 3 (tempo de fechamento automático)");
+        num_teste++;
 
         // Digitar "1,2,3" → deve resultar em "23" nos últimos 2 dígitos
         send_digit(4'd1);
         send_digit(4'd2);
         send_digit(4'd3);
-        verificar_deslocamento_r6(4'd2, 4'd3);  // BCD1=2, BCD0=3 → valor "23"
+        verificar_deslocamento_r6(4'd2, 4'd3, num_teste);  // BCD1=2, BCD0=3 → valor "23"
+        num_teste++;
 
         // Pressionar "*" para confirmar
         send_digit(4'hA);
-        verificar_bcd_r6(4'd4);  // Deve ir para opção 4
+        verificar_bcd_r6(4'd4, num_teste);  // Deve ir para opção 4
+        num_teste++;
 
         // Sair do setup
-        return_to_operational_r6(5'd23);
+        return_to_operational_r6(5'd23, num_teste);
+        num_teste += 2;
 
         // Teste 2: Testar saturação mínima (03 → 05)
         enter_setup_r6_opcao3();
@@ -638,12 +631,15 @@ module testbench_setup_completo;
         send_digit(4'd0);
         send_digit(4'd3);
         send_digit(4'hA);
-        test_limits_r6(5'd3, 5'd5);  // 03 deve ser saturado para 05
+        test_limits_r6(5'd3, 5'd5, num_teste);  // 03 deve ser saturado para 05
+        num_teste++;
 
         send_digit(4'hA);
-        verificar_bcd_r6(4'd5);  // Deve ir para opção 5
+        verificar_bcd_r6(4'd5, num_teste);  // Deve ir para opção 5
+        num_teste++;
 
-        return_to_operational_r6(5'd5);
+        return_to_operational_r6(5'd5, num_teste);
+        num_teste += 2;
 
         // Teste 3: Testar saturação máxima (97 → 60) 
         enter_setup_r6_opcao3();
@@ -651,12 +647,14 @@ module testbench_setup_completo;
         send_digit(4'd9);
         send_digit(4'd7);
         send_digit(4'hA);
-        test_limits_r6(5'd97, 5'd60);  // 97 deve ser saturado para 60
+        test_limits_r6(5'd97, 5'd60, num_teste);  // 97 deve ser saturado para 60
+        num_teste++;
 
         send_digit(4'hA);
-        verificar_bcd_r6(4'd5);  // Deve ir para opção 5
+        verificar_bcd_r6(4'd5, num_teste);  // Deve ir para opção 5
+        num_teste++;
 
-        return_to_operational_r6(5'd60);
+        return_to_operational_r6(5'd60, num_teste);
 
         $display("=== RELEASE 6 CONCLUÍDA ===\n");
     endtask
@@ -734,21 +732,15 @@ module testbench_setup_completo;
         end
     endtask
 
-    task automatic verificar_descarte_r7(senhaPac_t senha, senhaPac_t senha_old);
-        if (senha.digits === senha_old.digits) begin
-            $display("[%0t] PASSOU! Senha nao foi alterada apos entrada incompleta.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Senha foi alterada apos entrada incompleta.", $time);
-        end
+    task automatic verificar_descarte_r7(senhaPac_t senha, senhaPac_t senha_old, int num_teste);
+        print_teste(senha.digits === senha_old.digits, num_teste,
+                   "Senha foi alterada após entrada incompleta (deveria ser descartada)");
     endtask
 
-    task automatic validar_senha_r7(senhaPac_t senha, int gerados_in[]);
-        if (senha.digits === {gerados_in[0], gerados_in[1], gerados_in[2], gerados_in[3],
-                              gerados_in[4], gerados_in[5]}) begin
-            $display("[%0t] PASSOU! Senha alterada corretamente.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Senha nao alterada corretamente.", $time);
-        end
+    task automatic validar_senha_r7(senhaPac_t senha, int gerados_in[], int num_teste);
+        print_teste(senha.digits === {gerados_in[0], gerados_in[1], gerados_in[2], gerados_in[3],
+                              gerados_in[4], gerados_in[5]}, num_teste,
+                   "Senha não foi alterada corretamente");
     endtask
 
     function automatic senhaPac_t get_senha_by_index(setupPac_t cfg, int idx);
@@ -767,6 +759,7 @@ module testbench_setup_completo;
         reset();
         
         old_configs = data_setup_new;
+        int num_teste = 1;
 
         for (int i = 0; i < 5; i++) begin
             senhaPac_t senha_old = get_senha_by_index(data_setup_new, i);
@@ -784,7 +777,8 @@ module testbench_setup_completo;
             send_digit(4'hA); // Confirmar com apenas 3 dígitos
             
             // Verificar se senha foi descartada (não deve ter mudado)
-            verificar_descarte_r7(get_senha_by_index(data_setup_new, i), senha_old);
+            verificar_descarte_r7(get_senha_by_index(data_setup_new, i), senha_old, num_teste);
+            num_teste++;
 
             // Teste 2: Entrada com > 12 dígitos → últimos 12 armazenados
             $display("Teste 2: Entrada com 14 dígitos (últimos 12 devem ser armazenados)");
@@ -801,12 +795,10 @@ module testbench_setup_completo;
             int ultimos_12[12] = '{3,4,5,6,7,8,9,0,1,2,3,4};
             
             // Verificar se os últimos 12 foram armazenados (adaptar validação para 12 dígitos)
-            if (get_senha_by_index(data_setup_new, i).digits[22:0] == {ultimos_12[0], ultimos_12[1], ultimos_12[2], 
-                                                                        ultimos_12[3], ultimos_12[4], ultimos_12[5]}) begin
-                $display("[%0t] PASSOU! Últimos 12 dígitos armazenados corretamente.", $time);
-            end else begin
-                $display("[%0t] FALHOU! Últimos 12 dígitos não armazenados corretamente.", $time);
-            end
+            print_teste(get_senha_by_index(data_setup_new, i).digits[22:0] == {ultimos_12[0], ultimos_12[1], ultimos_12[2], 
+                                                                        ultimos_12[3], ultimos_12[4], ultimos_12[5]}, 
+                       num_teste, "Últimos 12 dígitos não armazenados corretamente");
+            num_teste++;
 
             // Teste 3: Entrada entre 4 e 12 dígitos → senha armazenada
             $display("Teste 3: Entrada com 6 dígitos válidos");
@@ -820,7 +812,8 @@ module testbench_setup_completo;
             send_digit(4'hA); // Confirmar
             
             // Validar se a senha foi alterada corretamente
-            validar_senha_r7(get_senha_by_index(data_setup_new, i), digitos_validos);
+            validar_senha_r7(get_senha_by_index(data_setup_new, i), digitos_validos, num_teste);
+            num_teste++;
 
             // Salvar a senha para verificação posterior
             case (i)
@@ -837,20 +830,19 @@ module testbench_setup_completo;
         fork
             begin
                 wait(data_setup_ok == 1'b1);
-                $display("[%0t] PASSOU! Retornou ao operacional com sucesso.", $time);
+                print_teste(1'b1, num_teste, "");
+                num_teste++;
             end
             begin
                 #1000;
-                $display("[%0t] FALHOU! Não retornou ao operacional em tempo.", $time);
+                print_teste(1'b0, num_teste, "Timeout ao retornar ao operacional");
+                num_teste++;
             end
         join_any
         disable fork;
 
-        if (compare_configs_r7(data_setup_new, saved_senha_1, saved_senha_2, saved_senha_3, saved_senha_4, saved_senha_master)) begin
-            $display("[%0t] PASSOU! Todas as senhas foram salvas corretamente.", $time);
-        end else begin
-            $display("[%0t] FALHOU! Alguma senha não foi salva corretamente.", $time);
-        end
+        print_teste(compare_configs_r7(data_setup_new, saved_senha_1, saved_senha_2, saved_senha_3, saved_senha_4, saved_senha_master),
+                   num_teste, "Alguma senha não foi salva corretamente");
 
         $display("=== RELEASE 7 CONCLUÍDA ===\n");
     endtask
