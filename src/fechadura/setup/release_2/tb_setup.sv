@@ -76,7 +76,7 @@ module testbench_setup;
         send_digit(4'h2);
         send_digit(4'h3);
         send_digit(4'h4);
-        send_digit(4'hA);
+        send_digit(4'hA)
 
         int num_teste = 1;
 

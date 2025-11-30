@@ -33,11 +33,19 @@ module testbench_setup;
     endtask
 
     task send_digit(input logic [3:0] digit);
-        digitos_value = digit;
+        // Shift Register
+        digitos_value.digits = {digitos_value.digits[18:0], digit};
+        
+        // Pulso de Validação
         digitos_valid = 1'b1;
         @(posedge clk);
         digitos_valid = 1'b0;
         @(posedge clk);
+
+        // Limpa o buffer após '*' ou '#'
+        if (digit == 4'hA || digit == 4'hB) begin
+                digitos_value = '1; // Preenche tudo com 1s (equivale a 0xF repetido)
+        end
     endtask
 
     task automatic verifificar_valor_salvo();
