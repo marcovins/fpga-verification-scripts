@@ -45,8 +45,83 @@ module testbench_operacional;
         rst = 0;
     endtask
 
+    task send_digit(input logic [3:0] digit);
+        // Shift Register
+        digitos_value.digits = {digitos_value.digits[18:0], digit};
+        
+        // Pulso de Validação
+        digitos_valid = 1'b1;
+        @(posedge clk);
+        digitos_valid = 1'b0;
+        @(posedge clk);
+
+        // Limpa o buffer após '*' ou '#'
+        if (digit == 4'hA || digit == 4'hB) begin
+             digitos_value = '1; // Preenche tudo com 1s (equivale a 0xF repetido)
+        end
+    endtask
+
+    task automatic print_teste(input bit condicao, input int num_teste, input string msg_erro);
+        if (condicao)
+            $display("Teste %0i: PASSOU!", num_teste);
+        else
+            $display("Teste %0i: FALHOU! %s", num_teste, msg_erro);
+    endtask
+
+    task automatic esperar_tempo_segundos(input int segundos);
+        repeat(segundos * 1000) @(posedge clk); // Considerando clock de 1KHz
+    endtask
+
+    task execute_tests_release2();
+        int tempo;
+        logic [19:0] [3:0] senha1 = '{1, 2, 3, 4, 5, 6, 7, 8};
+
+        num_teste = 1;
+
+        for (int i = 0; i < 19; i++) begin
+            if (i < 8)
+                send_digit(senha1[i]);
+            else
+                send_digit(4'h5); // Digito qualquer para completar 20 digitos
+            tempo = $urandom_range(1, 6);
+
+            esperar_tempo_segundos(tempo);
+
+            // Simulando sinais do teclado
+            if (tempo > 5) begin
+                digitos_value = {20{4'hE}};
+                digitos_valid = 1'b1;
+
+                @(posedge clk);
+
+                digitos_valid = 1'b0;
+                digitos_value = '1;
+            end
+
+            @(posedge clk);
+            
+            // Fazendo a verificação
+            print_teste((tempo > 5 && bip == 1) || (tempo <= 5 && bip == 0), num_teste, "O digito foi aceito mesmo com tempo de espera maior que o permitido.");
+
+            num_teste = num_teste + 1;
+        end
+    endtask
+
     initial begin
+        clk = 0;
+        rst = 0;
+        data_setup_ok = 0;
+        digitos_value = '1;
+
         reset();
+
+        @(posedge clk);
+        data_setup_new.senha_1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8, default: 4'hf};
+        data_setup_ok = 1;
+        @(posedge clk);
+        data_setup_ok = 0;
+
+        execute_tests_release2();
 
         #100 $finish;
     end
