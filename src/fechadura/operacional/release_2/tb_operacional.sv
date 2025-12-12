@@ -19,7 +19,8 @@ module testbench_operacional;
     logic bip;
 
     int num_teste;
-
+    logic [3:0] senha1 [8];
+    
     operacional dut (
         .clk(clk),
         .rst(rst),
@@ -76,7 +77,7 @@ module testbench_operacional;
 
     task execute_tests_release2();
         int tempo;
-        logic [3:0] senha1 [8] = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8};
+        senha1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8};
 
         num_teste = 1;
 

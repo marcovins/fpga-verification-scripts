@@ -18,6 +18,9 @@ module testbench_operacional;
     logic tranca;
     logic bip;
 
+    int num_teste;
+    logic [3:0] senha1 [8];
+
     operacional dut (
         .clk(clk),
         .rst(rst),
@@ -45,8 +48,129 @@ module testbench_operacional;
         rst = 0;
     endtask
 
+    task automatic print_teste(input bit condicao, input int num_teste, input string msg_erro);
+        if (condicao)
+            $display("Teste %0i: PASSOU!", num_teste);
+        else
+            $display("Teste %0i: FALHOU! %s", num_teste, msg_erro);
+    endtask
+
+    task automatic trancar_porta();
+        sensor_contato = 0; // Porta fechada
+
+        if (tranca == 0) begin
+            botao_interno = 1;
+            repeat (3) @(posedge clk);
+            botao_interno = 0;
+            @(posedge clk);
+        end
+    endtask
+
+    task send_digit(input logic [3:0] digit);
+        // Shift Register
+        digitos_value.digits = {digitos_value.digits[18:0], digit};
+        
+        // Pulso de Validação
+        digitos_valid = 1'b1;
+        @(posedge clk);
+        digitos_valid = 1'b0;
+        @(posedge clk);
+
+        // Limpa o buffer após '*' ou '#'
+        if (digit == 4'hA || digit == 4'hB) begin
+             digitos_value = '1; // Preenche tudo com 1s (equivale a 0xF repetido)
+        end
+    endtask
+
+    task automatic destrancar_porta(input logic [3:0] senha [8]);
+        // Inserir a senha
+        for (int i = 0; i < 8; i++) begin
+            send_digit(senha[i]);
+        end
+
+        // Enviar '*'
+        send_digit(4'hA); // '*'
+
+        @(posedge clk);
+
+        // Sensor de contato aberto (porta destrancada)
+        sensor_contato = 1;
+    endtask
+
+    task automatic execute_tests_release8();
+        num_teste = 1;
+
+        // Caso 1
+        senha1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8};
+
+        // Garantir que a porta está trancada inicialmente
+        trancar_porta();
+
+        // Destrancar com a senha correta
+        destrancar_porta(senha1);
+
+        // Aguardar 5000 ciclos de clock
+        fork
+            begin
+                repeat (5000) @(posedge clk);
+            end
+            begin
+                // Monitorar o estado da tranca
+                wait (bip == 1);
+
+                print_teste(bip == 0, num_teste, "Bip acionado antes do tempo de porta aberta excedido.");
+            end
+        join_any
+        disable fork;
+
+        @(posedge clk);
+
+        // Verificar se o bip foi acionado
+        print_teste(bip == 1, num_teste, "Bip não acionado após tempo de porta aberta excedido.");
+
+        num_teste = num_teste + 1;
+
+        // Caso 2
+
+        // Garantir que a porta está trancada inicialmente
+        trancar_porta();
+
+        // Destrancar com a senha correta
+        destrancar_porta(senha1);
+
+        fork
+            begin
+                repeat (4999) @(posedge clk);
+            end
+            begin
+                // Monitorar o estado da tranca
+                wait (bip == 1);
+
+                print_teste(bip == 0, num_teste, "Bip acionado antes do tempo de porta aberta excedido.");
+            end
+        join_any
+        disable fork;
+
+        sensor_contato = 0; // Porta fechada
+
+        @(posedge clk);
+
+        print_teste(bip == 0, num_teste, "Bip não acionado após tempo de porta aberta excedido.");
+    endtask
+
     initial begin
+        clk = 0;
+        rst = 0;
+
         reset();
+
+        @(posedge clk);
+        data_setup_new.senha_1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8, default: 4'hf};
+        data_setup_ok = 1;
+        @(posedge clk);
+        data_setup_ok = 0;
+
+        execute_tests_release8();
 
         #100 $finish;
     end
