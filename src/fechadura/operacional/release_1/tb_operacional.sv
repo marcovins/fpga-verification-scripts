@@ -71,7 +71,7 @@ module testbench_operacional;
     endtask
 
     task automatic execute_tests_release1();
-        logic [19:0] [3:0] senha1 = '{1, 2, 3, 4, 5, 6, 7, 8};
+        logic [3:0] senha1 [8] = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8};
 
         for (int i = 0; i < 8; i++) begin
             // Inserção parcial da senha 1

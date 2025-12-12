@@ -18,6 +18,8 @@ module testbench_operacional;
     logic tranca;
     logic bip;
 
+    int num_teste;
+    
     operacional dut (
         .clk(clk),
         .rst(rst),
@@ -45,8 +47,125 @@ module testbench_operacional;
         rst = 0;
     endtask
 
+    task send_digit(input logic [3:0] digit);
+        // Shift Register
+        digitos_value.digits = {digitos_value.digits[18:0], digit};
+        
+        // Pulso de Validação
+        digitos_valid = 1'b1;
+        @(posedge clk);
+        digitos_valid = 1'b0;
+        @(posedge clk);
+
+        // Limpa o buffer após '*' ou '#'
+        if (digit == 4'hA || digit == 4'hB) begin
+             digitos_value = '1; // Preenche tudo com 1s (equivale a 0xF repetido)
+        end
+    endtask
+
+    task automatic print_teste(input bit condicao, input int num_teste, input string msg_erro);
+        if (condicao)
+            $display("Teste %0i: PASSOU!", num_teste);
+        else
+            $display("Teste %0i: FALHOU! %s", num_teste, msg_erro);
+    endtask
+
+    task automatic digitar_aleatorios(input int n);
+        for (int i = 0; i < n; i++) begin
+            send_digit($urandom_range(0, 9));
+        end
+    endtask
+
+    task automatic trancar_porta();
+        sensor_contato = 0; // Porta fechada
+
+        if (tranca == 0) begin
+            botao_interno = 1;
+            repeat (3) @(posedge clk);
+            botao_interno = 0;
+            @(posedge clk);
+        end
+    endtask
+
+    task automatic execute_tests_release3();
+        logic [3:0] senha1 [8] = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8};
+
+        num_teste = 1;
+
+        trancar_porta();
+
+        // Teste 1: aleatórios + senha + *
+
+        // Digitar 12 dígitos aleatórios
+        digitar_aleatorios(12);
+
+        // Digitar senha correta
+        for (int i = 0; i < 8; i++) begin
+            send_digit(senha1[i]);
+        end 
+
+        // Pressionar '*'
+        send_digit(4'hA);
+
+        print_teste(tranca == 0, num_teste, "Tranca não destravou após senha correta");
+
+        num_teste = num_teste + 1;
+
+        trancar_porta();
+
+        // Teste 2: senha + aleatórios + *
+
+        // Digitar senha correta
+        for (int i = 0; i < 8; i++) begin
+            send_digit(senha1[i]);
+        end
+
+        // Digitar 12 dígitos aleatórios
+        digitar_aleatorios(12);
+        
+        // Pressionar '*'
+        send_digit(4'hA);
+
+        print_teste(tranca == 0, num_teste, "Tranca não destravou após senha correta");
+
+        num_teste = num_teste + 1;
+
+        trancar_porta();
+
+        // Teste 3: aleatórios + senha + aleatórios + *
+
+        // Digitar 6 dígitos aleatórios
+        digitar_aleatorios(6);
+
+        // Digitar senha correta
+        for (int i = 0; i < 8; i++) begin
+            send_digit(senha1[i]);
+        end
+
+        // Digitar 6 dígitos aleatórios
+        digitar_aleatorios(6);
+
+        // Pressionar '*'
+        send_digit(4'hA);
+
+        print_teste(tranca == 0, num_teste, "Tranca não destravou após senha correta");
+    endtask
+
     initial begin
+        clk = 0;
+        rst = 0;
+        data_setup_ok = 0;
+        digitos_value = '1;
+
         reset();
+
+        @(posedge clk);
+        data_setup_new.senha_1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8, default: 4'hf};
+        data_setup_ok = 1;
+        @(posedge clk);
+        data_setup_ok = 0;
+
+        execute_tests_release3();
 
         #100 $finish;
     end
