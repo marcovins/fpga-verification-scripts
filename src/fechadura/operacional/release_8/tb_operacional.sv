@@ -165,7 +165,7 @@ module testbench_operacional;
         reset();
 
         @(posedge clk);
-        data_setup_new.senha_1 = '{4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8, default: 4'hf};
+        data_setup_new.senha_1.digits = '{0:4'h1, 1:4'h2, 2:4'h3, 3:4'h4, 4:4'h5, 5:4'h6, 6:4'h7, 7:4'h8, default: 4'hf};
         data_setup_ok = 1;
         @(posedge clk);
         data_setup_ok = 0;
