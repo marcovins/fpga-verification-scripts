@@ -2,6 +2,8 @@
 
 module testbench_operacional;
     parameter int UM_SEGUNDO = 1000;
+    parameter int DEBOUNCE = 100;
+    parameter int TIMEOUT = DEBOUNCE + 10;
 
     logic clk = 0;
     logic rst = 0;
@@ -24,11 +26,10 @@ module testbench_operacional;
     int testes_passaram = 0;
     int testes_falharam = 0;
     int num_teste = 1;
-
+    bit teclado_ativo;
     logic [3:0] senha1 [8];
-    logic [6:0] HIFEN = 7'b1000000;
     int tempo;
-    logic teclado_desabilitado;
+    int ciclos;
 
     operacional dut (
         .clk(clk),
@@ -59,28 +60,40 @@ module testbench_operacional;
     endtask
 
     task send_digit(input logic [3:0] digit);
+        // Shift das teclas
         digitos_value.digits = {digitos_value.digits[18:0], digit};
+        repeat (3) @(posedge clk);
+
         digitos_valid = 1'b1;
-        @(posedge clk);
+        repeat (5) @(posedge clk);
         digitos_valid = 1'b0;
         @(posedge clk);
 
         if (digit == 4'hA || digit == 4'hB) begin
             digitos_value = '1;
         end
+        @(posedge clk);
     endtask
 
-    task automatic print_teste(input bit condicao, input string msg_erro);
-        total_testes++;
-        if (condicao) begin
-            $display("Teste %0d: PASSOU!", num_teste);
-            testes_passaram++;
-        end else begin
-            testes_falharam++;
-            $display("Teste %0d: FALHOU! %s", num_teste, msg_erro);
+    // Macro que avalia a expressão dinamicamente usando polling (funciona com funções sem argumentos)
+    `define print_teste(condicao, msg_erro) \
+        begin \
+            total_testes++; \
+            fork \
+                begin \
+                    while (!(condicao)) @(posedge clk); \
+                    $display("Teste %0d: PASSOU!", num_teste); \
+                    testes_passaram++; \
+                end \
+                begin \
+                    repeat (TIMEOUT) @(posedge clk); \
+                    $display("Teste %0d: FALHOU! %s", num_teste, msg_erro); \
+                    testes_falharam++; \
+                end \
+            join_any \
+            disable fork; \
+            num_teste++; \
         end
-        num_teste++;
-    endtask
 
     task automatic aguarda_ciclos(input int ciclos);
         repeat(ciclos) @(posedge clk);
@@ -98,37 +111,63 @@ module testbench_operacional;
 
     task automatic trancar_porta();
         sensor_contato = 0;
+
+        repeat (3) @(posedge clk);
+
         if (tranca == 0) begin
             botao_interno = 1;
-            repeat (3) @(posedge clk);
+            repeat (DEBOUNCE + 5) @(posedge clk);
             botao_interno = 0;
             @(posedge clk);
         end
     endtask
 
+    function automatic logic [3:0] retorna_bcd_por_idx(input int idx);
+        case(idx)
+            0: return bcd_pac.BCD0;
+            1: return bcd_pac.BCD1;
+            2: return bcd_pac.BCD2;
+            3: return bcd_pac.BCD3;
+            4: return bcd_pac.BCD4;
+            5: return bcd_pac.BCD5;
+            default: return '1;
+        endcase
+    endfunction
+
+    function automatic logic verifica_valor_bcd(input int idx);
+        // Verifica se os displays de 0 até idx mostram hífen
+        for(int i = 0; i <= idx; i++)begin
+            logic [3:0] bcd = retorna_bcd_por_idx(i);
+            if(bcd !== 4'hA)
+                return 1'b0;
+        end
+        return 1'b1;
+    endfunction
+
+    function automatic logic verifica_todos_bcd_hifen();
+        // Verifica se todos os displays mostram hífen
+        for(int i = 0; i < 5; i++)begin
+            logic [3:0] bcd = retorna_bcd_por_idx(i);
+            if(bcd !== 4'hA)
+                return 1'b0;
+        end
+        return 1'b1;
+    endfunction
+
     task automatic envia_senha_errada();
+        // Envia 3 dígitos aleatórios + '*' para confirmar senha incorreta
         for (int j = 0; j < 3; j++) begin
             send_digit($urandom_range(0, 9));
         end
-        send_digit(4'hA);
-        @(posedge clk);
+        send_digit(4'hA); // '*' para confirmar
+        repeat(2)@(posedge clk);
     endtask
 
     task automatic destravar_porta();
         botao_interno = 1'b1;
-        aguarda_ciclos(2);
+        repeat (DEBOUNCE + 5) @(posedge clk);
         botao_interno = 1'b0;
-        aguarda_ciclos(2);
-    endtask
-
-    task automatic fechar_porta();
-        sensor_contato = 1'b1;
-        aguarda_ciclos(2);
-    endtask
-
-    task automatic abrir_porta();
-        sensor_contato = 1'b0;
-        aguarda_ciclos(2);
+        repeat (2) @(posedge clk);
     endtask
 
     task automatic destrancar_porta(input logic [3:0] senha [8]);
@@ -151,14 +190,10 @@ module testbench_operacional;
         end
 
         send_digit(4'hB);
-        repeat(2) @(posedge clk);
-
-        print_teste(digitos_value.digits == '1, "Valores não foram apagados após #");
+        `print_teste(digitos_value.digits == '1, "Valores não foram apagados após #")
 
         send_digit(4'hA);
-        @(posedge clk);
-
-        print_teste(tranca == 1, "A senha incompleta foi considerada");
+        `print_teste(tranca == 1, "A senha incompleta foi considerada")
     endtask
 
     // ========== RELEASE 2: Teste de timeout entre dígitos ==========
@@ -178,15 +213,15 @@ module testbench_operacional;
 
             if (tempo > 5) begin
                 digitos_value = {20{4'hE}};
+                repeat (3) @(posedge clk);
                 digitos_valid = 1'b1;
                 @(posedge clk);
                 digitos_valid = 1'b0;
                 digitos_value = '1;
             end
 
-            @(posedge clk);
-            print_teste((tempo > 5 && bip == 1) || (tempo <= 5 && bip == 0), 
-                       "Timeout entre dígitos não funcionou corretamente");
+            `print_teste((tempo > 5 && bip == 1) || (tempo <= 5 && bip == 0), 
+                       "Timeout entre dígitos não funcionou corretamente")
         end
     endtask
 
@@ -197,144 +232,170 @@ module testbench_operacional;
         num_teste = 1;
 
         trancar_porta();
+        repeat (10) @(posedge clk);
+
         digitar_aleatorios(12);
         for (int i = 0; i < 8; i++) begin
             send_digit(senha1[i]);
         end
         send_digit(4'hA);
-        print_teste(tranca == 0, "Tranca não destravou (aleatórios + senha + *)");
+        `print_teste(tranca == 0, "Tranca não destravou (aleatórios + senha + *)")
 
         trancar_porta();
+        repeat (10) @(posedge clk);
+
         for (int i = 0; i < 8; i++) begin
             send_digit(senha1[i]);
         end
         digitar_aleatorios(12);
         send_digit(4'hA);
-        print_teste(tranca == 0, "Tranca não destravou (senha + aleatórios + *)");
+        `print_teste(tranca == 0, "Tranca não destravou (senha + aleatórios + *)")
 
         trancar_porta();
+        repeat (10) @(posedge clk);
+
         digitar_aleatorios(6);
         for (int i = 0; i < 8; i++) begin
             send_digit(senha1[i]);
         end
         digitar_aleatorios(6);
         send_digit(4'hA);
-        print_teste(tranca == 0, "Tranca não destravou (aleatórios + senha + aleatórios + *)");
+        `print_teste(tranca == 0, "Tranca não destravou (aleatórios + senha + aleatórios + *)")
     endtask
 
     // ========== RELEASE 4: Teste de bloqueio por erros ==========
     task automatic execute_tests_release4();
         $display("\n========== INICIANDO TESTES RELEASE 4 ==========");
-        teclado_desabilitado = 1'b1;
+
         num_teste = 1;
-
-        for (int i = 0; i < 4; i++) begin            
-            envia_senha_errada();
-            aguarda_segundos(1);
-        end
-
-        envia_senha_errada();
-        @(posedge clk);
-        print_teste(teclado_en == 1'b0, "Teclado deveria estar desabilitado após 5 erros");
-
-        for (int tentativa = 0; tentativa < 10; tentativa++) begin
-            aguarda_segundos(2);
-            if (teclado_en == 1'b1) begin
-                teclado_desabilitado = 1'b0;
-            end
-        end
         
-        print_teste(teclado_desabilitado, "Teclado deveria estar desabilitado durante bloqueio");
+        // Teste 1 a 4: Erros de 1 a 4 - Verificar sistema inoperante por 1s e displays
+        for (int i = 0; i < 4; i++) begin  
+            teclado_ativo = 1'b0;
+            // Envia senha errada
+            envia_senha_errada();
+            // Verifica se o display correspondente está com hífen
+            `print_teste(verifica_valor_bcd(i), $sformatf("BCD%0d deveria mostrar hífen após erro %0d", i, i+1))
+            
+            fork
+                begin
+                    // Aguarda 1 segundo (sistema inoperante)
+                    aguarda_segundos(1); // 1 segundo
+                end
+                begin
+                    while (teclado_en == 0) @(posedge clk);
+                    teclado_ativo = 1'b1;
+                end
+            join_any
+            disable fork;
+            `print_teste(teclado_ativo == 1'b0, $sformatf("Teclado deveria estar desabilitado por 1s após erro %0d", i+1))
+        end
 
-        aguarda_segundos(10);
-        @(posedge clk);
-        print_teste(teclado_en == 1'b1, "Sistema deveria normalizar após 30s (teclado_en ativo)");
+        ciclos = 0;
+        teclado_ativo = 1'b0;
+        // Teste 5: 5º erro - Bloqueio de 30s e todos displays com hífen
+        envia_senha_errada();
+        // Verifica se todos os displays mostram hífen
+        `print_teste(verifica_todos_bcd_hifen(), "Todos os displays deveriam mostrar hífen após 5 erros")
+        fork
+            begin
+                // Aguarda 30 segundos  (sistema inoperante)
+                aguarda_segundos(30); // 30 segundos
+            end
+            begin
+                while (teclado_en == 0)begin
+                    @(posedge clk);
+                    ciclos++;
+                end
+                teclado_ativo = 1'b1;
+            end
+        join_any
+        disable fork;
+        // Teste 6: verifica se o teclado ficou desabilitado durante o bloqueio
+        `print_teste(teclado_ativo == 1'b0, "Teclado deveria estar desabilitado durante o bloqueio")
+
+        aguarda_ciclos((30 * UM_SEGUNDO) - ciclos); // Completa os 30 segundos se tiver saido do loop antes
+        `print_teste(teclado_en == 1'b1, "Sistema deveria normalizar após 30s (teclado_en ativo)")
     endtask
 
     // ========== RELEASE 5: Teste de botão interno ==========
     task automatic execute_tests_release5();
         $display("\n========== INICIANDO TESTES RELEASE 5 ==========");
         num_teste = 1;
-        aguarda_ciclos(2);
-        print_teste(tranca == 1'b1, "Tranca deveria estar travada no estado inicial");
+        `print_teste(tranca == 1'b1, "Tranca deveria estar travada no estado inicial")
         
         botao_interno = 1'b1;
-        aguarda_ciclos(1);
-        print_teste(tranca == 1'b0, "Tranca deveria destravar ao pressionar botão interno");
+        repeat (DEBOUNCE + 5) @(posedge clk);
         botao_interno = 1'b0;
+        `print_teste(tranca == 1'b0, "Tranca deveria destravar ao pressionar botão interno")
     endtask
 
     // ========== RELEASE 6: Teste de modo Não Perturbe ==========
     task automatic execute_tests_release6();
         $display("\n========== INICIANDO TESTES RELEASE 6 ==========");
         num_teste = 1;
-        aguarda_ciclos(5);
-        print_teste(teclado_en == 1'b1, "Teclado deveria estar habilitado inicialmente");
+        `print_teste(teclado_en == 1'b1, "Teclado deveria estar habilitado inicialmente")
         
         sensor_contato = 1'b1;
-        aguarda_ciclos(2);
+        repeat (2) @(posedge clk);
         
         botao_bloqueio = 1'b1;
         aguarda_segundos(2);
         botao_bloqueio = 1'b0;
-        aguarda_ciclos(10);
-        print_teste(teclado_en == 1'b1, "Teclado não deveria desabilitar com menos de 3s");
+        `print_teste(teclado_en == 1'b1, "Teclado não deveria desabilitar com menos de 3s")
         
-        aguarda_ciclos(5);
+        repeat (5) @(posedge clk);
         botao_bloqueio = 1'b1;
         aguarda_segundos(3);
-        aguarda_ciclos(5);
-        print_teste(teclado_en == 1'b0, "Teclado deveria estar desabilitado após 3s");
+        `print_teste(teclado_en == 1'b0, "Teclado deveria estar desabilitado após 3s")
         
         botao_bloqueio = 1'b0;
-        aguarda_ciclos(10);
-        print_teste(teclado_en == 1'b0, "Teclado deve permanecer desabilitado após soltar botão");
+        `print_teste(teclado_en == 1'b0, "Teclado deve permanecer desabilitado após soltar botão")
         
         send_digit(4'd1);
-        aguarda_ciclos(5);
+        repeat (5) @(posedge clk);
         send_digit(4'hA);
-        aguarda_ciclos(10);
-        print_teste(teclado_en == 1'b0, "Teclado deve permanecer desabilitado durante uso");
+        `print_teste(teclado_en == 1'b0, "Teclado deve permanecer desabilitado durante uso")
         
-        print_teste(tranca == 1'b1, "Tranca deveria estar travada durante modo Não Perturbe");
+        `print_teste(tranca == 1'b1, "Tranca deveria estar travada durante modo Não Perturbe")
         
         botao_interno = 1'b1;
-        aguarda_ciclos(2);
-        print_teste(tranca == 1'b0, "Botão interno deve destravar mesmo em modo Não Perturbe");
+        repeat (DEBOUNCE + 5) @(posedge clk);
         botao_interno = 1'b0;
+        `print_teste(tranca == 1'b0, "Botão interno deve destravar mesmo em modo Não Perturbe")
     endtask
 
     // ========== RELEASE 7: Teste de timer de trancamento automático ==========
     task automatic execute_tests_release7();
         $display("\n========== INICIANDO TESTES RELEASE 7 ==========");
         num_teste = 1;
-        fechar_porta();
-        aguarda_ciclos(5);
-        print_teste(sensor_contato == 1'b1, "Porta deveria estar fechada inicialmente");
+        sensor_contato = 1'b1;
+        repeat (5) @(posedge clk);
+        `print_teste(sensor_contato == 1'b1, "Porta deveria estar fechada inicialmente")
         
         destravar_porta();
-        aguarda_ciclos(5);
-        print_teste(tranca == 1'b0, "Tranca deveria estar destravada");
+        repeat (5) @(posedge clk);
+        `print_teste(tranca == 1'b0, "Tranca deveria estar destravada")
         
-        fechar_porta();
-        aguarda_ciclos(5);
-        print_teste(tranca == 1'b0, "Tranca ainda deve estar destravada no início");
+        sensor_contato = 1'b1;
+        repeat (5) @(posedge clk);
+        `print_teste(tranca == 1'b0, "Tranca ainda deve estar destravada no início")
         
         aguarda_ciclos((UM_SEGUNDO * data_setup_new.tranca_aut_time) * 3 / 4);
-        print_teste(tranca == 1'b0, "Tranca não deveria travar antes do tempo configurado");
+        `print_teste(tranca == 1'b0, "Tranca não deveria travar antes do tempo configurado") // verifica após 3/4 do tempo total
 
         aguarda_ciclos((UM_SEGUNDO * data_setup_new.tranca_aut_time) / 4);
-        print_teste(tranca == 1'b1, "Tranca deveria travar ao completar o tempo configurado");
+        `print_teste(tranca == 1'b1, "Tranca deveria travar ao completar o tempo configurado") // verifica após o tempo total 1/4 + 3/4 = 1
 
         destravar_porta();
-        aguarda_ciclos(5);
-        fechar_porta();
-        aguarda_ciclos(5);
+        repeat (5) @(posedge clk);
+        sensor_contato = 1'b1;
+        repeat (5) @(posedge clk);
         aguarda_segundos(3);
-        abrir_porta();
-        aguarda_ciclos(5);
+        sensor_contato = 1'b0;
+        repeat (5) @(posedge clk);
         aguarda_segundos(data_setup_new.tranca_aut_time - 3);
-        print_teste(tranca == 1'b0, "Tranca não deveria travar após interrupção do timer");
+        `print_teste(tranca == 1'b0, "Tranca não deveria travar após interrupção do timer")
     endtask
 
     // ========== RELEASE 8: Teste de alarme de porta aberta ==========
@@ -347,60 +408,83 @@ module testbench_operacional;
 
         fork
             begin
-                repeat (5000) @(posedge clk);
+                aguarda_ciclos((data_setup_new.bip_time) * UM_SEGUNDO);
             end
             begin
-                wait (bip == 1);
-                print_teste(bip == 0, "Bip acionado antes do tempo de porta aberta excedido");
+                while (bip == 0) @(posedge clk);
+                `print_teste(bip == 0, "Bip acionado antes do tempo de porta aberta excedido")
             end
         join_any
         disable fork;
 
         @(posedge clk);
-        print_teste(bip == 1, "Bip não acionado após tempo de porta aberta excedido");
+        `print_teste(bip == 1, "Bip não acionado após tempo de porta aberta excedido")
 
         trancar_porta();
         destrancar_porta(senha1);
 
         fork
             begin
-                repeat (4999) @(posedge clk);
+                aguarda_ciclos((data_setup_new.bip_time) * UM_SEGUNDO - 1);
             end
             begin
-                wait (bip == 1);
-                print_teste(bip == 0, "Bip acionado antes do tempo excedido (caso 2)");
+                while (bip == 0) @(posedge clk);
+                `print_teste(bip == 0, "Bip acionado antes do tempo excedido (caso 2)")
             end
         join_any
         disable fork;
 
         sensor_contato = 0;
         @(posedge clk);
-        print_teste(bip == 0, "Bip acionado após fechar porta antes do tempo");
+        `print_teste(bip == 0, "Bip acionado após fechar porta antes do tempo")
     endtask
 
-    // ========== SEQUÊNCIA PRINCIPAL DE TESTES ==========
-    initial begin
-        // Inicialização
-        reset();
-        @(posedge clk);
-        
-        // Configurar senha inicial
-        data_setup_new.senha_1.digits = '{0:4'h1, 1:4'h2, 2:4'h3, 3:4'h4, 4:4'h5, 5:4'h6, 6:4'h7, 7:4'h8, default: 4'hf};
+    task automatic configuracoes_iniciais();
+        data_setup_new.senha_1.digits = '{7:4'h1, 6:4'h2, 5:4'h3, 4:4'h4, 3:4'h5, 2:4'h6, 1:4'h7, 0:4'h8, default: 4'hf};
         data_setup_new.tranca_aut_time = 6'd10; // 10 segundos para timer de trancamento
         data_setup_new.bip_time = 6'd5; // 5 segundos para alarme
         data_setup_ok = 1;
         @(posedge clk);
         data_setup_ok = 0;
-        @(posedge clk);
+        sensor_contato = 0;
 
+        repeat (3) @(posedge clk);
+    endtask
+
+    // ========== SEQUÊNCIA PRINCIPAL DE TESTES ==========
+    initial begin
+        
         // Executar todos os testes sequencialmente
+        reset();
+        configuracoes_iniciais();
         execute_tests_release1();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release2();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release3();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release4();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release5();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release6();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release7();
+
+        reset();
+        configuracoes_iniciais();
         execute_tests_release8();
 
         // Resumo final
